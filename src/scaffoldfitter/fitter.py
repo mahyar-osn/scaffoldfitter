@@ -14,12 +14,37 @@ class Fitter(object):
         self._modelTransformedCoordinateField = None
         self._modelRotationScaleField = None
         self._modelOffsetField = None
+        self._dataCoordinateField = None
+        # self._alignSettingsChangeCallback = None
 
     def resetAlignSettings(self):
         self._alignSettings = dict(euler_angles=[0.0, 0.0, 0.0], scale=1.0, offset=[0.0, 0.0, 0.0], mirror=False)
 
     def isAlignMirror(self):
         return self._alignSettings['mirror']
+
+    def getAlignEulerAngles(self):
+        return self._alignSettings['euler_angles']
+
+    def setAlignEulerAngles(self, eulerAngles):
+        if len(eulerAngles) == 3:
+            self._alignSettings['euler_angles'] = eulerAngles
+            self.applyAlignSettings()
+
+    def setAlignMirror(self, mirror):
+        self._alignSettings['mirror'] = mirror
+        self.applyAlignSettings()
+
+    def getAlignOffset(self):
+        return self._alignSettings['offset']
+
+    def setAlignOffset(self, offset):
+        if len(offset) == 3:
+            self._alignSettings['offset'] = offset
+            self.applyAlignSettings()
+
+    def getAlignScale(self):
+        return self._alignSettings['scale']
 
     def createFiniteElementField(self, fieldName='coordinates'):
         fieldModule = self._region.getFieldmodule()
@@ -34,6 +59,17 @@ class Fitter(object):
         fieldModule.endChange()
 
         return finiteElementField
+
+    def _getDataRange(self):
+        fm = self._region.getFieldmodule()
+        datapoints = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+        minimums, maximums = self._getNodesetMinimumMaximum(datapoints, self._dataCoordinateField)
+        return minimums, maximums
+
+    def getAutoPointSize(self):
+        minimums, maximums = self._getDataRange()
+        dataSize = maths.magnitude(maths.sub(maximums, minimums))
+        return 0.00005*dataSize
 
     def getMesh(self):
         fm = self._region.getFieldmodule()
