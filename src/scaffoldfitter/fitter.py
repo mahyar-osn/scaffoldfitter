@@ -33,7 +33,12 @@ class Fitter(object):
         scaffoldNodeValus = self._getScaffoldNodeParameters()
         pointCloudValues = self._getPointCloudParameters()
         TransformedCoordinates, R, t, s = self.rigid.align(None, pointCloudValues, scaffoldNodeValus)
-        zincutils.setScaffoldNodeParameters(self.modelCoordinateField, TransformedCoordinates.tolist())
+        rotationScale = maths.matrixconstantmult(R.tolist(), s*20000)
+        offset = t.tolist()[0]
+        zincutils.transformCoordinates(self.modelCoordinateField, rotationScale, offset)
+        zincutils.copyNodalParameters(self.modelCoordinateField, self.modelReferenceCoordinateField)
+        # zincutils.setScaffoldNodeParameters(self.modelCoordinateField, TransformedCoordinates.tolist())
+        return self.modelCoordinateField
 
     def isAlignMirror(self):
         return self._alignSettings['mirror']
@@ -55,6 +60,7 @@ class Fitter(object):
 
     def setAlignOffset(self, offset):
         if len(offset) == 3:
+            self._alignSettings['offset'] = offset
             self._alignSettings['offset'] = offset
             self.applyAlignSettings()
 
@@ -148,7 +154,8 @@ class Fitter(object):
 
     def applyAlignSettings(self):
         rot = maths.eulerToRotationMatrix3(self._alignSettings['euler_angles'])
-        scale = self._alignSettings['scale']
+        # scale = self._alignSettings['scale']
+        scale = 3200
         xScale = scale
         if self.isAlignMirror():
             xScale = -scale
