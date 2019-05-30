@@ -1,6 +1,6 @@
 import scipy
 from scipy.spatial import cKDTree
-from scipy.optimize import leastsq, fmin, least_squares
+from scipy.optimize import leastsq, fmin, least_squares, minimize
 from scipy.linalg import lstsq
 
 from .utils import transform_rigid_3d_about_com
@@ -21,10 +21,10 @@ def _sample_data(data, N):
         return data
     else:
         i = scipy.linspace(0, len(data)-1, N).astype(int)
-        return data[i,:]
+        return data[i, :]
 
 
-def fit_rigid_scale(data, target, xtol=1e-5, maxfev=0, t0=None, sample=None, output_errors=False, scale_threshold=None):
+def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None, output_errors=False, scale_threshold=None):
     """
 
     :param data:
@@ -52,7 +52,7 @@ def fit_rigid_scale(data, target, xtol=1e-5, maxfev=0, t0=None, sample=None, out
 
     if scale_threshold is not None:
         def objective_function(t):
-            DT = transform_rigid_3d_about_com(D, t)
+            DT, Tfinal = transform_rigid_3d_about_com(D, t)
             DTtree = cKDTree(DT)
             d = DTtree.query(T)[0]
             s = max(t[-1], 1.0/t[-1])
@@ -63,17 +63,24 @@ def fit_rigid_scale(data, target, xtol=1e-5, maxfev=0, t0=None, sample=None, out
             return d*d + sw
     else:
         def objective_function(t):
-            DT = transform_rigid_3d_about_com(D, t)
+            DT, Tfinal = transform_rigid_3d_about_com(D, t)
             DTtree = cKDTree(DT)
             d = DTtree.query(T)[0]
             return d*d
 
+        def objective_function_NM(t):
+            DT, Tfinal = transform_rigid_3d_about_com(D, t)
+            DTtree = cKDTree(DT)
+            d = DTtree.query(T)[0]
+            return (d*d).sum()
+
     initial_rms = scipy.sqrt(objective_function(t0).mean())
     t0pt = leastsq(objective_function, t0, xtol=xtol, maxfev=maxfev)[0]
-    fitted_data = transform_rigid_3d_about_com(data, t0pt)
+    # res = minimize(objective_function_NM, t0, method='nelder-mead', options={'xtol': 1e-8, 'disp': True})
+    fitted_data, Tfinal = transform_rigid_3d_about_com(D, t0pt)
     final_rms = scipy.sqrt(objective_function(t0pt).mean())
 
     if output_errors:
-        return t0pt, fitted_data, (initial_rms, final_rms)
+        return t0pt, fitted_data, (initial_rms, final_rms), Tfinal
     else:
-        return t0pt, fitted_data
+        return t0pt, fitted_data, Tfinal
