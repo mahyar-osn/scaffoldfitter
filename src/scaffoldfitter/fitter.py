@@ -4,6 +4,7 @@ from opencmiss.zinc.status import OK as ZINC_OK
 from .utils import maths
 from .utils import zincutils
 from .optimization.rigid import Rigid
+from .optimization.alignment_fitting import fit_rigid_scale
 
 
 class Fitter(object):
@@ -27,17 +28,24 @@ class Fitter(object):
         minimums, maximums = self._getDataRange()
         dataCentre = maths.mult(maths.add(minimums, maximums), 0.5)
         self.setAlignOffset(maths.sub(dataCentre, self._modelCentre))
+        # self.setStatePostAlign()
 
     def initializeRigidAlignment(self):
-        self.rigid = Rigid()
+        # self.rigid = Rigid()
         scaffoldNodeValus = self._getScaffoldNodeParameters()
         pointCloudValues = self._getPointCloudParameters()
-        TransformedCoordinates, R, t, s = self.rigid.align(None, pointCloudValues, scaffoldNodeValus)
-        rotationScale = maths.matrixconstantmult(R.tolist(), s*20000)
-        offset = t.tolist()[0]
-        zincutils.transformCoordinates(self.modelCoordinateField, rotationScale, offset)
-        zincutils.copyNodalParameters(self.modelCoordinateField, self.modelReferenceCoordinateField)
-        # zincutils.setScaffoldNodeParameters(self.modelCoordinateField, TransformedCoordinates.tolist())
+        t0pt, fitted_data, (initial_rms, final_rms), T = fit_rigid_scale(scaffoldNodeValus, pointCloudValues, xtol=1e-5,
+                                                                         maxfev=0, sample=None, output_errors=True)
+
+        print("Initial RMS = ", initial_rms)
+        print("Final RMS = ", final_rms)
+
+        # TransformedCoordinates, R, t, s = self.rigid.align(None, pointCloudValues, scaffoldNodeValus)
+        # rotationScale = maths.matrixconstantmult(R.tolist(), s*1.75)
+        offset = t0pt[0:3].tolist()
+        zincutils.transformCoordinates(self.modelCoordinateField, T[:3, :3].tolist(), offset)
+        # zincutils.copyNodalParameters(self.modelCoordinateField, self.modelReferenceCoordinateField)
+        zincutils.setScaffoldNodeParameters(self.modelCoordinateField, fitted_data.tolist())
         return self.modelCoordinateField
 
     def isAlignMirror(self):
@@ -218,7 +226,7 @@ class Fitter(object):
         return minimums, maximums
 
     def _getScaffoldNodeParameters(self):
-        parameterValues = zincutils.getScaffoldNodalParametersToList(self.modelReferenceCoordinateField)
+        parameterValues = zincutils.getScaffoldNodalParametersToList(self.modelCoordinateField)
         return parameterValues
 
     def _getPointCloudParameters(self):
