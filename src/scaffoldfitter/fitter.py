@@ -3,7 +3,6 @@ from opencmiss.zinc.status import OK as ZINC_OK
 
 from .utils import maths
 from .utils import zincutils
-from .optimization.rigid import Rigid
 from .optimization.alignment_fitting import fit_rigid_scale
 
 
@@ -28,24 +27,25 @@ class Fitter(object):
         minimums, maximums = self._getDataRange()
         dataCentre = maths.mult(maths.add(minimums, maximums), 0.5)
         self.setAlignOffset(maths.sub(dataCentre, self._modelCentre))
-        # self.setStatePostAlign()
+        self.initializeRigidAlignment()
+        return self.modelCoordinateField
 
     def initializeRigidAlignment(self):
-        # self.rigid = Rigid()
         scaffoldNodeValus = self._getScaffoldNodeParameters()
         pointCloudValues = self._getPointCloudParameters()
-        t0pt, fitted_data, (initial_rms, final_rms), T = fit_rigid_scale(scaffoldNodeValus, pointCloudValues, xtol=1e-5,
-                                                                         maxfev=0, sample=None, output_errors=True)
+        t0pt, fitted_data, (initial_rms, final_rms), T = fit_rigid_scale(scaffoldNodeValus, pointCloudValues,
+                                                                         xtol=1e-10, maxfev=0, sample=None,
+                                                                         scale_threshold=None, output_errors=True)
 
         print("Initial RMS = ", initial_rms)
         print("Final RMS = ", final_rms)
 
-        # TransformedCoordinates, R, t, s = self.rigid.align(None, pointCloudValues, scaffoldNodeValus)
-        # rotationScale = maths.matrixconstantmult(R.tolist(), s*1.75)
-        offset = t0pt[0:3].tolist()
-        zincutils.transformCoordinates(self.modelCoordinateField, T[:3, :3].tolist(), offset)
-        # zincutils.copyNodalParameters(self.modelCoordinateField, self.modelReferenceCoordinateField)
-        zincutils.setScaffoldNodeParameters(self.modelCoordinateField, fitted_data.tolist())
+        euler_radians = maths.rotationMatrix3ToEuler(T[:3, :3].tolist())
+        euler_radians_correct = [euler_radians[0], euler_radians[1], -euler_radians[2]]
+        self.setAlignEulerAngles(euler_radians_correct)
+        self.setAlignScale(1.)
+        self.setStatePostAlign()
+        self._isStateAlign = False
         return self.modelCoordinateField
 
     def isAlignMirror(self):
@@ -53,6 +53,12 @@ class Fitter(object):
 
     def getAlignEulerAngles(self):
         return self._alignSettings['euler_angles']
+
+    def getAlignScale(self):
+        return self._alignSettings['scale']
+
+    def getAlignOffset(self):
+        return self._alignSettings['offset']
 
     def setAlignEulerAngles(self, eulerAngles):
         if len(eulerAngles) == 3:
@@ -63,30 +69,23 @@ class Fitter(object):
         self._alignSettings['mirror'] = mirror
         self.applyAlignSettings()
 
-    def getAlignOffset(self):
-        return self._alignSettings['offset']
-
     def setAlignOffset(self, offset):
         if len(offset) == 3:
             self._alignSettings['offset'] = offset
-            self._alignSettings['offset'] = offset
             self.applyAlignSettings()
 
-    def getAlignScale(self):
-        return self._alignSettings['scale']
+    def setAlignScale(self, scale):
+        self._alignSettings['scale'] = scale
+        self.applyAlignSettings()
 
     def createFiniteElementField(self, fieldName='coordinates'):
         fieldModule = self._region.getFieldmodule()
         fieldModule.beginChange()
-
         finiteElementField = fieldModule.createFieldFiniteElement(3)
-
         finiteElementField.setName(fieldName)
-
         finiteElementField.setManaged(True)
         finiteElementField.setTypeCoordinate(True)
         fieldModule.endChange()
-
         return finiteElementField
 
     def _getDataRange(self):
@@ -98,7 +97,7 @@ class Fitter(object):
     def getAutoPointSize(self):
         minimums, maximums = self._getDataRange()
         dataSize = maths.magnitude(maths.sub(maximums, minimums))
-        return 0.00005*dataSize
+        return 0.005*dataSize
 
     def getMesh(self):
         fm = self._region.getFieldmodule()
@@ -162,8 +161,7 @@ class Fitter(object):
 
     def applyAlignSettings(self):
         rot = maths.eulerToRotationMatrix3(self._alignSettings['euler_angles'])
-        # scale = self._alignSettings['scale']
-        scale = 3200
+        scale = self._alignSettings['scale']
         xScale = scale
         if self.isAlignMirror():
             xScale = -scale
@@ -194,14 +192,12 @@ class Fitter(object):
     def setStatePostAlign(self):
         if not self._isStateAlign:
             return
-        self._isStateAlign = False
         rotationScale = maths.matrixconstantmult(maths.eulerToRotationMatrix3(self._alignSettings['euler_angles']),
                                                  self._alignSettings['scale'])
         if self.isAlignMirror():
             rotationScale[0] = maths.mult(rotationScale[0], -1.0)
         zincutils.transformCoordinates(self.modelCoordinateField, rotationScale, self._alignSettings['offset'])
         zincutils.copyNodalParameters(self.modelCoordinateField, self.modelReferenceCoordinateField)
-        return self.modelCoordinateField
 
     def _getNodesetMinimumMaximum(self, nodeset, field):
         fm = field.getFieldmodule()
@@ -226,7 +222,7 @@ class Fitter(object):
         return minimums, maximums
 
     def _getScaffoldNodeParameters(self):
-        parameterValues = zincutils.getScaffoldNodalParametersToList(self.modelCoordinateField)
+        parameterValues = zincutils.getScaffoldNodalParametersToList(self.modelReferenceCoordinateField)
         return parameterValues
 
     def _getPointCloudParameters(self):
