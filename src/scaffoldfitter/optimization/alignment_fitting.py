@@ -1,19 +1,21 @@
 import scipy
 from scipy.spatial import cKDTree
-from scipy.optimize import leastsq, fmin, least_squares, minimize
-from scipy.linalg import lstsq
+from scipy.optimize import leastsq
 
-from .utils import transform_rigid_3d_about_com
+from .utils import transform_rigid_3d_about_com, transform_rigid_scale_3d_about_com
 
 
-def _sample_data(data, N):
+def _sample_data(data, ratio):
     """
     Sample evenly spaced points from data
 
     :param data:
-    :param N:
+    :param ratio:
     :return:
     """
+
+    total_data = len(data)
+    N = int(total_data * ratio)
 
     if N < 1:
         raise ValueError("src.scaffoldfitter.optimization.alignment_fitting._sample_data(): N must be > 1")
@@ -38,12 +40,14 @@ def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None,
     :return:
     """
 
+    T = scipy.array(target)
+
     if sample is not None:
-        D = _sample_data(data, sample)
-        T = _sample_data(target, sample)
+        D = data
+        T = _sample_data(T, sample)
     else:
         D = data
-        T = target
+        T = T
 
     if t0 is None:
         t0 = scipy.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0])
@@ -63,20 +67,13 @@ def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None,
             return d*d + sw
     else:
         def objective_function(t):
-            DT, Tfinal = transform_rigid_3d_about_com(D, t)
+            DT, Tfinal = transform_rigid_scale_3d_about_com(D, t)
             DTtree = cKDTree(DT)
             d = DTtree.query(T)[0]
             return d*d
 
-        def objective_function_NM(t):
-            DT, Tfinal = transform_rigid_3d_about_com(D, t)
-            DTtree = cKDTree(DT)
-            d = DTtree.query(T)[0]
-            return (d*d).sum()
-
     initial_rms = scipy.sqrt(objective_function(t0).mean())
     t0pt = leastsq(objective_function, t0, xtol=xtol, maxfev=maxfev)[0]
-    # res = minimize(objective_function_NM, t0, method='nelder-mead', options={'xtol': 1e-8, 'disp': True})
     fitted_data, Tfinal = transform_rigid_3d_about_com(D, t0pt)
     final_rms = scipy.sqrt(objective_function(t0pt).mean())
 
