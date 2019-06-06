@@ -224,7 +224,8 @@ def setScaffoldNodeParameters(field, newNodeParams, time=0.0):
         cache.setNode(node)
         versions = nodetemplate.getValueNumberOfVersions(feField, -1, Node.VALUE_LABEL_VALUE)
         for v in range(1, versions + 1):
-            result, values = feField.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, v, newNodeParams[nodeCount])
+            newValues = newNodeParams[nodeCount]
+            result = feField.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, v, newValues)
             if result != ZINC_OK:
                 success = False
         node = nodeIter.next()
@@ -234,3 +235,48 @@ def setScaffoldNodeParameters(field, newNodeParams, time=0.0):
         print('zinc.getScaffoldNodalParametersToList: failed to get/set some values')
     return success
 
+
+def swap_axes(source_field, axes=None):
+    axis_x = 0
+    axis_y = 1
+    axis_z = 2
+    ncomp = source_field.getNumberOfComponents()
+    field = source_field.castFiniteElement()
+    if not (field.isValid()):
+        print('field must be finite element type')
+        return False
+    success = True
+    fm = field.getFieldmodule()
+    fm.beginChange()
+    cache = fm.createFieldcache()
+    nodes = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
+    nodetemplate = nodes.createNodetemplate()
+    nodeIter = nodes.createNodeiterator()
+    node = nodeIter.next()
+    while node.isValid():
+        nodetemplate.defineFieldFromNode(field, node)
+        cache.setNode(node)
+        for derivative in [Node.VALUE_LABEL_VALUE, Node.VALUE_LABEL_D_DS1, Node.VALUE_LABEL_D_DS2,
+                           Node.VALUE_LABEL_D2_DS1DS2,
+                           Node.VALUE_LABEL_D_DS3, Node.VALUE_LABEL_D2_DS1DS3, Node.VALUE_LABEL_D2_DS2DS3,
+                           Node.VALUE_LABEL_D3_DS1DS2DS3]:
+            versions = nodetemplate.getValueNumberOfVersions(field, -1, derivative)
+            for v in range(1, versions + 1):
+                result, values = field.getNodeParameters(cache, -1, derivative, v, ncomp)
+                if result != ZINC_OK:
+                    success = False
+                else:
+                    if axes == 'yz':
+                        new_values = [values[axis_x], values[axis_z], values[axis_y]]
+                    elif axes == 'xz':
+                        new_values = [values[axis_z], values[axis_y], values[axis_x]]
+                    else:  # 'xy'
+                        new_values = [values[axis_y], values[axis_x], values[axis_z]]
+                    result = field.setNodeParameters(cache, -1, derivative, v, new_values)
+                    if result != ZINC_OK:
+                        success = False
+        node = nodeIter.next()
+    fm.endChange()
+    if not success:
+        print('failed to get/set some values')
+    return success
