@@ -3,7 +3,7 @@ from opencmiss.zinc.status import OK as ZINC_OK
 
 from .utils import maths
 from .utils import zincutils
-from .optimization.alignment_fitting import fit_rigid_scale
+from .optimization.alignment_fitting import fitRigidScale
 
 
 class Fitter(object):
@@ -46,7 +46,7 @@ class Fitter(object):
     def initializeRigidAlignment(self):
         scaffoldNodeValus = self._getScaffoldNodeParameters()
         pointCloudValues = self._getPointCloudParameters()
-        t0pt, fitted_data, (initial_rms, final_rms), T = fit_rigid_scale(scaffoldNodeValus, pointCloudValues,
+        t0pt, fitted_data, (initial_rms, final_rms), T = fitRigidScale(scaffoldNodeValus, pointCloudValues,
                                                                          xtol=1e-10, maxfev=0, sample=None,
                                                                          scale_threshold=None, output_errors=True)
 
