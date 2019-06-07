@@ -1,7 +1,7 @@
 import scipy
 
 
-def transform_scale_3d(x, S):
+def transformScale3D(x, S):
     """
     Applies scaling to a list of points.
     :param x:
@@ -11,7 +11,7 @@ def transform_scale_3d(x, S):
     return scipy.multiply(x, S)
 
 
-def transform_rigid_3d(x, t):
+def transformRigid3D(x, t):
     """
     Performs a rigid transformation to a list of points.
 
@@ -42,7 +42,7 @@ def transform_rigid_3d(x, t):
     return scipy.dot(T, X)[:3, :].T, T
 
 
-def transform_rigid_3d_about_com(x, t):
+def transformRigid3DAboutCom(x, t):
     """
     Performs a rigid transformation to a list of points.
     Rotation is about the centre of mass. Rotates first then translates.
@@ -53,11 +53,11 @@ def transform_rigid_3d_about_com(x, t):
     """
     centre_of_mass = x.mean(0)
     x0 = x - centre_of_mass
-    x0T, Tfinal = transform_rigid_3d(x0, t)
+    x0T, Tfinal = transformRigid3D(x0, t)
     return x0T + centre_of_mass, Tfinal
 
 
-def transform_rigid_scale_3d_about_com(x, t):
+def transformRigidScale3DAboutCom(x, t):
     """
     Performs a rigid + scale transformation to a list of points.
     Rotation is about the centre of mass. Rotates first then translates.
@@ -67,8 +67,8 @@ def transform_rigid_scale_3d_about_com(x, t):
     :param t:
     :return:
     """
-    centre_of_mass = x.mean(0)
-    x0 = x - centre_of_mass
-    x0S = transform_scale_3d(x0, t[6:])
-    x0T, Tfinal = transform_rigid_3d(x0S, t[:6])
+    centreOfMass = x.mean(0)
+    x0 = x - centreOfMass
+    x0S = transformScale3D(x0, t[6:])
+    x0T, Tfinal = transformRigid3D(x0S, t[:6])
     return x0T, Tfinal
