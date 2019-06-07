@@ -2,10 +2,10 @@ import scipy
 from scipy.spatial import cKDTree
 from scipy.optimize import leastsq
 
-from .utils import transform_rigid_3d_about_com, transform_rigid_scale_3d_about_com
+from .utils import transformRigid3DAboutCom, transformRigidScale3DAboutCom
 
 
-def _sample_data(data, ratio):
+def _sampleData(data, ratio):
     """
     Sample evenly spaced points from data
 
@@ -14,11 +14,11 @@ def _sample_data(data, ratio):
     :return:
     """
 
-    total_data = len(data)
-    N = int(total_data * ratio)
+    totalData = len(data)
+    N = int(totalData * ratio)
 
     if N < 1:
-        raise ValueError("src.scaffoldfitter.optimization.alignment_fitting._sample_data(): N must be > 1")
+        raise ValueError("src.scaffoldfitter.optimization.alignment_fitting._sampleData(): N must be > 1")
     elif N > len(data):
         return data
     else:
@@ -26,7 +26,7 @@ def _sample_data(data, ratio):
         return data[i, :]
 
 
-def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None, output_errors=False, scale_threshold=None):
+def fitRigidScale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None, outputErrors=False, scaleThreshold=None):
     """
 
     :param data:
@@ -35,8 +35,8 @@ def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None,
     :param maxfev:
     :param t0:
     :param sample:
-    :param output_errors:
-    :param scale_threshold:
+    :param outputErrors:
+    :param scaleThreshold:
     :return:
     """
 
@@ -44,7 +44,7 @@ def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None,
 
     if sample is not None:
         D = data
-        T = _sample_data(T, sample)
+        T = _sampleData(T, sample)
     else:
         D = data
         T = T
@@ -54,30 +54,30 @@ def fit_rigid_scale(data, target, xtol=1e-8, maxfev=10000, t0=None, sample=None,
 
     D = scipy.array(D)
 
-    if scale_threshold is not None:
-        def objective_function(t):
-            DT, Tfinal = transform_rigid_3d_about_com(D, t)
+    if scaleThreshold is not None:
+        def objectiveFunction(t):
+            DT, Tfinal = transformRigid3DAboutCom(D, t)
             DTtree = cKDTree(DT)
             d = DTtree.query(T)[0]
             s = max(t[-1], 1.0/t[-1])
-            if s > scale_threshold:
+            if s > scaleThreshold:
                 sw = 1000.0 * s
             else:
                 sw = 1.0
             return d*d + sw
     else:
-        def objective_function(t):
-            DT, Tfinal = transform_rigid_scale_3d_about_com(D, t)
+        def objectiveFunction(t):
+            DT, Tfinal = transformRigidScale3DAboutCom(D, t)
             DTtree = cKDTree(DT)
             d = DTtree.query(T)[0]
             return d*d
 
-    initial_rms = scipy.sqrt(objective_function(t0).mean())
-    t0pt = leastsq(objective_function, t0, xtol=xtol, maxfev=maxfev)[0]
-    fitted_data, Tfinal = transform_rigid_3d_about_com(D, t0pt)
-    final_rms = scipy.sqrt(objective_function(t0pt).mean())
+    initialRMS = scipy.sqrt(objectiveFunction(t0).mean())
+    t0pt = leastsq(objectiveFunction, t0, xtol=xtol, maxfev=maxfev)[0]
+    fittedData, Tfinal = transformRigid3DAboutCom(D, t0pt)
+    finalRMS = scipy.sqrt(objectiveFunction(t0pt).mean())
 
-    if output_errors:
-        return t0pt, fitted_data, (initial_rms, final_rms), Tfinal
+    if outputErrors:
+        return t0pt, fittedData, (initialRMS, finalRMS), Tfinal
     else:
-        return t0pt, fitted_data, Tfinal
+        return t0pt, fittedData, Tfinal
