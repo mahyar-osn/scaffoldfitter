@@ -48,7 +48,7 @@ class Fitter(object):
         pointCloudValues = self._getPointCloudParameters()
         t0pt, fitted_data, (initial_rms, final_rms), T = fitRigidScale(scaffoldNodeValus, pointCloudValues,
                                                                          xtol=1e-10, maxfev=0, sample=None,
-                                                                         scale_threshold=None, output_errors=True)
+                                                                         scaleThreshold=None, outputErrors=True)
 
         print("Initial RMS = ", initial_rms)
         print("Final RMS = ", final_rms)
