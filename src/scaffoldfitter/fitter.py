@@ -8,7 +8,6 @@ from opencmiss.zinc.optimisation import Optimisation
 
 from .utils import maths
 from .utils import zincutils
-from .utils import field_utils
 from .optimization.alignment_fitting import fitRigidScale
 
 
@@ -38,11 +37,13 @@ class Fitter(object):
         self._dataProjectionErrorField = None
         self._dataProjectionMeanErrorField = None
         self._dataProjectionMaximumErrorField = None
+        self._filterTopErrorProportion = 0.9
+        self._filterNonNormalProjectionLimit = 0.99
 
         self._resetFitSettings()
 
     def resetAlignSettings(self):
-        self._alignSettings = dict(euler_angles=[0.0, 0.0, 0.0], scale=[1.0]*3, offset=[0.0, 0.0, 0.0], mirror=False)
+        self._alignSettings = dict(euler_angles=[0.0, 0.0, 0.0], scale=[1.0] * 3, offset=[0.0, 0.0, 0.0], mirror=False)
 
     def getInitialScale(self):
         dataMinimums, dataMaximums = self._getDataRange()
@@ -51,10 +52,24 @@ class Fitter(object):
         modelRange = maths.sub(modelMaximums, modelMinimums)
         tmp = [modelRange[0], modelRange[2], modelRange[1]]
         dataModelDifference = maths.eldiv(dataRange, tmp)
-        meanScale = sum(dataModelDifference) / len(dataModelDifference)
+        meanScale = (sum(dataModelDifference) / len(dataModelDifference))
+        # dataModelDifference = [dataModelDifference[0]*0.4, dataModelDifference[1]*0.4, dataModelDifference[2]*0.4]
         self.setAlignScale(dataModelDifference)
         self.setStatePostAlign()
         self.resetAlignSettings()
+
+    def getInitialDataScale(self):
+        # TODO: Some extremely large data should be scaled down
+
+        dataMinimums, dataMaximums = self._getDataRange()
+        dataRange = maths.sub(dataMaximums, dataMinimums)
+        modelMinimums, modelMaximums = self._getModelRange()
+        modelRange = maths.sub(modelMaximums, modelMinimums)
+        tmp = [modelRange[0], modelRange[2], modelRange[1]]
+        dataModelDifference = maths.eldiv(tmp, dataRange)
+        meanScale = (sum(dataModelDifference) / len(dataModelDifference))
+        self._dataScale = meanScale
+        self.setDataPostScale()
 
     def autoCentreModelOnData(self):
         dataMinimums, dataMaximums = self._getDataRange()
@@ -85,6 +100,7 @@ class Fitter(object):
 
     def swapAxes(self, axes=None):
         zincutils.swap_axes(self._modelCoordinateField, axes=axes)
+        zincutils.copyNodalParameters(self._modelCoordinateField, self._modelReferenceCoordinateField)
 
     def isAlignMirror(self):
         return self._alignSettings['mirror']
@@ -107,30 +123,22 @@ class Fitter(object):
     def setAlignEulerAngles(self, eulerAngles):
         if len(eulerAngles) == 3:
             self._alignSettings['euler_angles'] = eulerAngles
-            self.applyAlignSettings()
+            # self.applyAlignSettings()
 
     def setAlignMirror(self, mirror):
         self._alignSettings['mirror'] = mirror
-        self.applyAlignSettings()
+        # self.applyAlignSettings()
 
     def setAlignOffset(self, offset):
         if len(offset) == 3:
             self._alignSettings['offset'] = offset
-            self.applyAlignSettings()
+            # self.applyAlignSettings()
 
     def setAlignScale(self, scale):
+        if not isinstance(scale, list):
+            scale = [scale]*3
         self._alignSettings['scale'] = scale
-        self.applyAlignSettings()
-
-    # def createFiniteElementField(self, fieldName='coordinates'):
-    #     fieldModule = self._region.getFieldmodule()
-    #     fieldModule.beginChange()
-    #     finiteElementField = fieldModule.createFieldFiniteElement(3)
-    #     finiteElementField.setName(fieldName)
-    #     finiteElementField.setManaged(True)
-    #     finiteElementField.setTypeCoordinate(True)
-    #     fieldModule.endChange()
-    #     return finiteElementField
+        # self.applyAlignSettings()
 
     def _getDataRange(self):
         fm = self._region.getFieldmodule()
@@ -147,10 +155,10 @@ class Fitter(object):
         return self._region
 
     def coordinatesChanged(self, field):
-        self._setRefereceModelCoordinates(field)
-        self._setModelCoordinates(field)
+        self.setRefereceModelCoordinates(field)
+        self.setModelCoordinates(field)
 
-    def getMesh(self):
+    def _getMesh(self):
         fm = self._region.getFieldmodule()
         for dimension in range(3, 0, -1):
             mesh = fm.findMeshByDimension(dimension)
@@ -158,8 +166,8 @@ class Fitter(object):
                 return mesh
         raise ValueError('Model contains no mesh')
 
-    def getModelCoordinateField(self, reference=False):
-        mesh = self.getMesh()
+    def getModelCoordinateField(self):
+        mesh = self._getMesh()
         element = mesh.createElementiterator().next()
         if not element.isValid():
             raise ValueError('Model contains no elements')
@@ -170,15 +178,8 @@ class Fitter(object):
         field = fieldIter.next()
         while field.isValid():
             if field.isTypeCoordinate() and (field.getNumberOfComponents() <= 3) and \
-                    ((self._modelReferenceCoordinateField is None) or
-                     (self._modelReferenceCoordinateField != field) or
-                     (self._modelCoordinateField is None) or
-                     (self._modelCoordinateField != field)):
+                    ((self._modelReferenceCoordinateField is None) or (field != self._modelReferenceCoordinateField)):
                 if field.isDefinedAtLocation(cache):
-                    if reference:
-                        self._setRefereceModelCoordinates(field)
-                    else:
-                        self._setModelCoordinates(field)
                     return field
             field = fieldIter.next()
         raise ValueError('Could not determine model coordinate field')
@@ -186,7 +187,6 @@ class Fitter(object):
     def getDataCoordinateField(self):
         fm = self._region.getFieldmodule()
         datapoints = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
-        self._activeDataPointGroupField = fm.createFieldNodeGroup(datapoints)
         datapoint = datapoints.createNodeiterator().next()
         if not datapoint.isValid():
             raise ValueError('Point cloud is empty')
@@ -198,7 +198,6 @@ class Fitter(object):
             if field.isTypeCoordinate() and (field.getNumberOfComponents() <= 3) and \
                     ((self._modelReferenceCoordinateField is None) or (field != self._modelReferenceCoordinateField)):
                 if field.isDefinedAtLocation(cache):
-                    self._setDataCoordinates(field)
                     return field
             field = fieldIter.next()
         raise ValueError('Could not determine data coordinate field')
@@ -206,23 +205,19 @@ class Fitter(object):
     def _getProjectFaceMeshGroup(self):
         fm = self._region.getFieldmodule()
         mesh2d = fm.findMeshByDimension(2)
-        self._exteriorFaceGroup = fm.createFieldElementGroup(mesh2d)
-        if self._exteriorFaceGroup.isValid() and self._exteriorFaceMeshGroup is None:
-            self._exteriorFaceMeshGroup = self._exteriorFaceGroup.getMeshGroup()
-            if self._exteriorFaceMeshGroup.isValid():
-                isExterior = fm.createFieldIsExterior()
-                isOnFaceXi3_1 = fm.createFieldIsOnFace(Element.FACE_TYPE_XI3_1)
-                isBoth = fm.createFieldAnd(isExterior, isOnFaceXi3_1)
-                if not isBoth.isValid():
-                    raise Exception \
-                        ("src.scaffoldfitter.fitter.Fitter._getProjectSurfaceGroup: Exterior face was not found!")
-                result = self._exteriorFaceMeshGroup.addElementsConditional(isBoth)
-                self._exteriorSurfaceField = isBoth
-                if result != ZINC_OK:
-                    return None
-        return None
 
-    def _getStrainField(self, mesh):
+        isExterior = fm.createFieldIsExterior()
+        isOnFaceXi3_1 = fm.createFieldIsOnFace(Element.FACE_TYPE_XI3_1)
+        isBoth = fm.createFieldAnd(isExterior, isOnFaceXi3_1)
+        self._exteriorSurfaceField = isBoth
+
+        self._exteriorFaceGroup = fm.createFieldElementGroup(mesh2d)
+        self._exteriorFaceGroup.setName('exteriorFaceElementGroup')
+        self._exteriorFaceMeshGroup = self._exteriorFaceGroup.getMeshGroup()
+        result = self._exteriorFaceMeshGroup.addElementsConditional(isBoth)
+        return
+
+    def _getStrainField(self):
         fm = self._region.getFieldmodule()
         dX_dxi1 = fm.createFieldDerivative(self._modelReferenceCoordinateField, 1)
         dX_dxi2 = fm.createFieldDerivative(self._modelReferenceCoordinateField, 2)
@@ -242,13 +237,79 @@ class Fitter(object):
     def _resetFitSettings(self):
         self._fitSettings = dict(strain_penalty=.0, edge_discontinuity_penalty=0.0, max_iterations=1)
 
+    def _filterNonNormal(self):
+        fm = self._region.getFieldmodule()
+        cache = fm.createFieldcache()
+        result, maxError = self._dataProjectionMaximumErrorField.evaluateReal(cache, 1)
+        if result != ZINC_OK:
+            print("Can't filter non-normal as can't evaluate max error: " + result)
+            return
+        if maxError <= 0:
+            print("Can't filter non-normal as max error = " + maxError)
+            return
+        fm.beginChange()
+
+        # don't filter points with tiny errors relative to model range
+        minimums, maximums = self._getModelRange()
+        scale = maths.magnitude(maths.sub(maximums, minimums))
+        errorLimit = 0.0001 * scale
+        errorLimit = maxError * 0.001
+        errorLimitField = fm.createFieldConstant([errorLimit])
+        errorGreaterThanLimitField = fm.createFieldGreaterThan(self._dataProjectionErrorField, errorLimitField)
+
+        deriv1 = fm.createFieldDerivative(self._modelCoordinateField, 1)
+        deriv2 = fm.createFieldDerivative(self._modelCoordinateField, 2)
+        cp = fm.createFieldCrossProduct(deriv1, deriv2)
+        normalField = fm.createFieldNormalise(cp)
+        dataNormalField = fm.createFieldEmbedded(normalField, self._storedMeshLocationField)
+
+        normalProjectionLimit = fm.createFieldConstant([self._filterNonNormalProjectionLimit])
+        normalisedProjection = fm.createFieldNormalise(self._dataProjectionDistanceCoordinateField)
+        normalAlignment = fm.createFieldDotProduct(normalisedProjection, dataNormalField)
+        absNormalAlignment = fm.createFieldAbs(normalAlignment)
+        isNonNormalField = fm.createFieldLessThan(absNormalAlignment, normalProjectionLimit)
+
+        falseField = fm.createFieldConstant([0])
+        conditionalField = fm.createFieldIf(errorGreaterThanLimitField, isNonNormalField, falseField)
+
+        activeDatapointsGroup = self._activeDataPointGroupField.getNodesetGroup()
+        result = activeDatapointsGroup.removeNodesConditional(conditionalField)
+        fm.endChange()
+
+        self._autorangeSpectrum()
+
+    def _filterTopError(self):
+        fm = self._region.getFieldmodule()
+        cache = fm.createFieldcache()
+        result, maxError = self._dataProjectionMaximumErrorField.evaluateReal(cache, 1)
+        if result != ZINC_OK:
+            print("Can't filter top errors as can't evaluate max error: " + result)
+            return
+        if maxError <= 0:
+            print("Can't filter top errors as max error = " + maxError)
+            return
+        fm.beginChange()
+        errorLimit = self._filterTopErrorProportion * maxError
+        errorLimitField = fm.createFieldConstant([errorLimit])
+        conditionalField = fm.createFieldGreaterThan(self._dataProjectionErrorField, errorLimitField)
+        activeDatapointsGroup = self._activeDataPointGroupField.getNodesetGroup()
+        activeDatapointsGroup.removeNodesConditional(conditionalField)
+        fm.endChange()
+
+        self._autorangeSpectrum()
+
     def computeProjection(self):
         fm = self._region.getFieldmodule()
         self._getProjectFaceMeshGroup()
+
+        mesh2d = self._exteriorFaceMeshGroup.getMasterMesh()
+        mesh3d = self._getMesh()
+
         if self._findMeshLocationField is None and self._exteriorFaceMeshGroup is not None:
             self._findMeshLocationField = fm.createFieldFindMeshLocation(self._dataCoordinateField,
                                                                          self._modelCoordinateField,
-                                                                         self._exteriorFaceMeshGroup)
+                                                                         mesh2d)
+
             if self._findMeshLocationField.isValid():
                 self._findMeshLocationField.setSearchMode(FieldFindMeshLocation.SEARCH_MODE_NEAREST)
             else:
@@ -258,7 +319,8 @@ class Fitter(object):
                                  'Ensure mesh or data points are correctly defined and initialised.')
 
         if self._storedMeshLocationField is None:
-            self._storedMeshLocationField = fm.createFieldStoredMeshLocation(self._exteriorFaceMeshGroup)
+            self._storedMeshLocationField = fm.createFieldStoredMeshLocation(mesh2d)
+            self._storedMeshLocationField.setName('stored_location')
             if not self._storedMeshLocationField.isValid():
                 self._storedMeshLocationField = None
                 raise ValueError('src.scaffoldfitter.fitter.Fitter.computeProjection:'
@@ -266,16 +328,18 @@ class Fitter(object):
                                  'Ensure the mesh is correctly defined and initialised')
 
         datapoints = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+        self._activeDataPointGroupField = fm.createFieldNodeGroup(datapoints)
         tmpTrue = fm.createFieldConstant([1])
         activeDatapointsGroup = self._activeDataPointGroupField.getNodesetGroup()
         activeDatapointsGroup.addNodesConditional(tmpTrue)
+        dimension = mesh2d.getDimension()
 
-        dimension = self._exteriorFaceMeshGroup.getDimension()
         fm.beginChange()
         self._dataProjectionCoordinateField = fm.createFieldEmbedded(self._modelCoordinateField,
                                                                      self._storedMeshLocationField)
         self._dataProjectionDistanceCoordinateField = fm.createFieldSubtract(self._dataProjectionCoordinateField,
                                                                              self._dataCoordinateField)
+
         self._dataProjectionErrorField = fm.createFieldMagnitude(self._dataProjectionDistanceCoordinateField)
         self._dataProjectionMeanErrorField = fm.createFieldNodesetMean(self._dataProjectionErrorField,
                                                                        activeDatapointsGroup)
@@ -287,32 +351,38 @@ class Fitter(object):
         cache = fm.createFieldcache()
         dataIter = activeDatapointsGroup.createNodeiterator()
         datapoint = dataIter.next()
+
         while datapoint.isValid():
             cache.setNode(datapoint)
-            element, xi = self._findMeshLocationField.evaluateMeshLocation(cache, dimension)
+            element, xi = self._findMeshLocationField.evaluateMeshLocation(cache, 3)
             if element.isValid():
                 datapoint.merge(nodetemplate)
-                self._storedMeshLocationField.assignMeshLocation(cache, element, xi)
+                xi = [xi[0], xi[1], 1.0]
+                if xi[2] < 1.:
+                    pass
+                else:
+                    result = self._storedMeshLocationField.assignMeshLocation(cache, element, xi)
             datapoint = dataIter.next()
+
         fm.endChange()
         self._showDataProjections()
+        self._filterTopError()
+        self._filterNonNormal()
         return
 
     def fit(self):
+
         fm = self._region.getFieldmodule()
-        tmpTrue = fm.createFieldConstant([1])
         activeDatapointsGroup = self._activeDataPointGroupField.getNodesetGroup()
-        activeDatapointsGroup.addNodesConditional(tmpTrue)
+        mesh2d = self._exteriorFaceMeshGroup.getMasterMesh()
+        mesh3d = self._mesh
         optimisation = fm.createOptimisation()
         optimisation.setMethod(Optimisation.METHOD_LEAST_SQUARES_QUASI_NEWTON)
+
         objectiveFunction = fm.createFieldNodesetSumSquares(self._dataProjectionDistanceCoordinateField,
                                                             activeDatapointsGroup)
+
         result = optimisation.addObjectiveField(objectiveFunction)
-        if result != ZINC_OK:
-            raise ValueError('src.scaffoldfitter.fitter.Fitter.fit: Objective function was not initiated!'
-                             'Ensure the projection is done successfully in order to calculate the distance.')
-        numberOfGaussPoints = 4
-        mesh = self.getMesh()
 
         lineMesh = fm.findMeshByDimension(1)
         if self._exteriorFaceMeshGroup is not None:
@@ -320,51 +390,57 @@ class Fitter(object):
             if lineMeshGroup.isValid():
                 lineMesh = lineMeshGroup
 
-        if self.getFitStrainPenalty() > 0.0:
-            strainField = self._getStrainField(mesh)
-            weightField = fm.createFieldConstant(self.getFitStrainPenalty())
-            weightedStrainField = strainField * weightField
-            weightedStrainFieldIntegral = fm.createFieldMeshIntegralSquares(weightedStrainField,
-                                                                            self._modelReferenceCoordinateField,
-                                                                            mesh)
-            weightedStrainFieldIntegral.setNumbersOfPoints(numberOfGaussPoints)
-            result = optimisation.addObjectiveField(weightedStrainFieldIntegral)
-            if result != ZINC_OK:
-                raise ValueError('Could not add optimisation strain penalty objective field')
+        numberOfGaussPoints = 4
+        penalty = 10.0
+        strainField = self._getStrainField()
+        weightField = fm.createFieldConstant([penalty])
+        weightedStrainField = fm.createFieldMultiply(strainField, weightField)
+        weightedStrainFieldIntegral = fm.createFieldMeshIntegralSquares(weightedStrainField,
+                                                                        self._modelReferenceCoordinateField,
+                                                                        mesh3d)
+        weightedStrainFieldIntegral.setNumbersOfPoints(numberOfGaussPoints)
+        result = optimisation.addObjectiveField(weightedStrainFieldIntegral)
 
-        # if self.getFitEdgeDiscontinuityPenalty() > 0.0:
-        #     edgeDiscontinuityField = fm.createFieldEdgeDiscontinuity(self._modelCoordinateField)
-        #     weightField = fm.createFieldConstant(self.getFitEdgeDiscontinuityPenalty())
-        #     weightedEdgeDiscontinuityField = edgeDiscontinuityField*weightField
-        #     weightedEdgeDiscontinuityIntegral = fm.createFieldMeshIntegralSquares(weightedEdgeDiscontinuityField,
-        #                                                                           self._modelReferenceCoordinateField,
-        #                                                                           lineMesh)
-        #     weightedEdgeDiscontinuityIntegral.setNumbersOfPoints(numberOfGaussPoints)
-        #     result = optimisation.addObjectiveField(weightedEdgeDiscontinuityIntegral)
-        #     if result != ZINC_OK:
-        #         raise ValueError('Could not add optimisation edge discontinuity penalty objective field')
+        eEdgeDiscontinuityPenalty = 1.0
+        edgeDiscontinuityField = fm.createFieldEdgeDiscontinuity(self._modelCoordinateField)
+        weightField = fm.createFieldConstant([eEdgeDiscontinuityPenalty])
+        weightedEdgeDiscontinuityField = edgeDiscontinuityField * weightField
+        weightedEdgeDiscontinuityIntegral = fm.createFieldMeshIntegralSquares(weightedEdgeDiscontinuityField,
+                                                                              self._modelReferenceCoordinateField,
+                                                                              lineMesh)
 
-        independentField = self._modelCoordinateField.castFiniteElement()
-        result = optimisation.addIndependentField(independentField)
+        weightedEdgeDiscontinuityIntegral.setNumbersOfPoints(numberOfGaussPoints)
+        result = optimisation.addObjectiveField(weightedEdgeDiscontinuityIntegral)
         if result != ZINC_OK:
-            raise ValueError('Could not set optimisation dependent field')
-        # if self._exteriorFaceGroup is not None:
-            # optimisation.setConditionalField(independentField, self._exteriorSurfaceField)
-        result = optimisation.setAttributeInteger(Optimisation.ATTRIBUTE_MAXIMUM_ITERATIONS, self.getFitMaxIterations())
+            raise ValueError('Could not add optimisation edge discontinuity penalty objective field')
+
+        # nodeset = fm.findNodesetByName('nodes')
+        # node = nodeset.findNodeByIdentifier(15)
+        # fc = fm.createFieldcache()
+        # fc.setNode(node)
+
+        result = optimisation.addIndependentField(self._modelCoordinateField)
+
+        # if self._exteriorSurfaceField is not None:
+        #     optimisation.setConditionalField(self._modelCoordinateField, self._exteriorFaceGroup)
+
+        result = optimisation.setAttributeInteger(Optimisation.ATTRIBUTE_MAXIMUM_ITERATIONS, 1)
         if result != ZINC_OK:
             raise ValueError('Could not set optimisation maximum iterations')
 
-        loggerMessageCount = self._logger.getNumberOfMessages()
-
         result = optimisation.optimise()
+        solution = optimisation.getSolutionReport()
+        print(solution)
 
-        if loggerMessageCount > 0:
-            for i in range(1, loggerMessageCount + 1):
-                print(self._logger.getMessageTypeAtIndex(i), self._logger.getMessageTextAtIndex(i))
-                self._logger.removeAllMessages()
+        # loggerMessageCount = self._logger.getNumberOfMessages()
+        # if loggerMessageCount > 0:
+        #     for i in range(1, loggerMessageCount + 1):
+        #         print(self._logger.getMessageTypeAtIndex(i), self._logger.getMessageTextAtIndex(i))
+        #         self._logger.removeAllMessages()
 
         if result != ZINC_OK:
             raise ValueError('Optimisation failed with result ' + str(result))
+        zincutils.copyNodalParameters(self._modelCoordinateField, self._modelReferenceCoordinateField)
         self._autorangeSpectrum()
 
     def _showDataProjections(self):
@@ -445,36 +521,36 @@ class Fitter(object):
     def _getChildRegion(self):
         self._region = self._region.getFirstChild()
 
-    def applyAlignSettings(self):
-        rot = maths.eulerToRotationMatrix3(self._alignSettings['euler_angles'])
-        scale = self._alignSettings['scale']
-        if isinstance(scale, float):
-            scale = [scale]*3
-        elif not (isinstance(scale, list) and len(scale) == 3):
-            scale = [1.0]*3
-        xScale = scale
-        if self.isAlignMirror():
-            xScale = -scale
-        rotationScale = [
-            rot[0][0] * scale[0], rot[0][1] * scale[0], rot[0][2] * scale[0],
-            rot[1][0] * scale[1], rot[1][1] * scale[1], rot[1][2] * scale[1],
-            rot[2][0] * scale[2], rot[2][1] * scale[2], rot[2][2] * scale[2]]
-        fm = self._region.getFieldmodule()
-        fm.beginChange()
-        if self._modelTransformedCoordinateField is None:
-            self._modelRotationScaleField = fm.createFieldConstant(rotationScale)
-            # following works in 3-D only
-            temp1 = fm.createFieldMatrixMultiply(3, self._modelRotationScaleField, self._modelCoordinateField)
-            self._modelOffsetField = fm.createFieldConstant(self._alignSettings['offset'])
-            self._modelTransformedCoordinateField = fm.createFieldAdd(temp1, self._modelOffsetField)
-        else:
-            cache = fm.createFieldcache()
-            self._modelRotationScaleField.assignReal(cache, rotationScale)
-            self._modelOffsetField.assignReal(cache, self._alignSettings['offset'])
-        fm.endChange()
-        if not self._modelTransformedCoordinateField.isValid():
-            print("Can't create transformed model coordinate field. Is problem 2-D?")
-        self._alignSettingsChangeCallback()
+    # def applyAlignSettings(self):
+    #     rot = maths.eulerToRotationMatrix3(self._alignSettings['euler_angles'])
+    #     scale = self._alignSettings['scale']
+    #     if isinstance(scale, float):
+    #         scale = [scale]*3
+    #     elif not (isinstance(scale, list) and len(scale) == 3):
+    #         scale = [1.0]*3
+    #     xScale = scale
+    #     if self.isAlignMirror():
+    #         xScale = -scale
+    #     rotationScale = [
+    #         rot[0][0] * scale[0], rot[0][1] * scale[0], rot[0][2] * scale[0],
+    #         rot[1][0] * scale[1], rot[1][1] * scale[1], rot[1][2] * scale[1],
+    #         rot[2][0] * scale[2], rot[2][1] * scale[2], rot[2][2] * scale[2]]
+    #     fm = self._region.getFieldmodule()
+    #     fm.beginChange()
+    #     if self._modelTransformedCoordinateField is None:
+    #         self._modelRotationScaleField = fm.createFieldConstant(rotationScale)
+    #         # following works in 3-D only
+    #         temp1 = fm.createFieldMatrixMultiply(3, self._modelRotationScaleField, self._modelCoordinateField)
+    #         self._modelOffsetField = fm.createFieldConstant(self._alignSettings['offset'])
+    #         self._modelTransformedCoordinateField = fm.createFieldAdd(temp1, self._modelOffsetField)
+    #     else:
+    #         cache = fm.createFieldcache()
+    #         self._modelRotationScaleField.assignReal(cache, rotationScale)
+    #         self._modelOffsetField.assignReal(cache, self._alignSettings['offset'])
+    #     fm.endChange()
+    #     if not self._modelTransformedCoordinateField.isValid():
+    #         print("Can't create transformed model coordinate field. Is problem 2-D?")
+    #     self._alignSettingsChangeCallback()
 
     def setAlignSettingsChangeCallback(self, alignSettingsChangeCallback):
         self._alignSettingsChangeCallback = alignSettingsChangeCallback
@@ -482,21 +558,27 @@ class Fitter(object):
     def setRegion(self):
         self._getChildRegion()
 
-    def _setRefereceModelCoordinates(self, field):
+    def setRefereceModelCoordinates(self, field):
         self._modelReferenceCoordinateField = field
 
-    def _setModelCoordinates(self, field):
+    def setModelCoordinates(self, field):
         self._modelCoordinateField = field
+        self._mesh = self._getMesh()
 
-    def _setDataCoordinates(self, field):
+    def setDataCoordinates(self, field):
         self._dataCoordinateField = field
+
+    def setDataPostScale(self):
+        dataScale = self._dataScale
+        success = zincutils.setDataScale(self._dataCoordinateField, dataScale)
+        print(success)
 
     def setStatePostAlign(self):
         if not self._isStateAlign:
             return
         tmp = [self._alignSettings['scale'][0], self._alignSettings['scale'][2], self._alignSettings['scale'][1]]
         rotationScale = maths.matrixvectormult(maths.eulerToRotationMatrix3(self._alignSettings['euler_angles']),
-                                                 tmp)
+                                               tmp)
         if self.isAlignMirror():
             rotationScale[0] = maths.mult(rotationScale[0], -1.0)
         zincutils.transformCoordinates(self._modelCoordinateField, rotationScale, self._alignSettings['offset'])
