@@ -2,7 +2,7 @@ from opencmiss.zinc.node import Node
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.status import OK as ZINC_OK
 
-from .maths import matrixvectormult, add
+from .maths import matrixvectormult, add, elmult
 
 
 def copyNodalParameters(sourceField, targetField, time = 0.0):
@@ -69,10 +69,10 @@ def transformCoordinates(field, rotationScale, offset, time = 0.0):
     if (len(rotationScale) != ncomp) or (len(offset) != ncomp):
         print('zinc.transformCoordinates: invalid matrix number of columns or offset size')
         return False
-    for matRow in rotationScale:
-        if len(matRow) != ncomp:
-            print('zinc.transformCoordinates: invalid matrix number of columns')
-            return False
+    # for matRow in rotationScale:
+    #     if len(matRow) != ncomp:
+    #         print('zinc.transformCoordinates: invalid matrix number of columns')
+    #         return False
     if (field.getCoordinateSystemType() != Field.COORDINATE_SYSTEM_TYPE_RECTANGULAR_CARTESIAN):
         print('zinc.transformCoordinates: field is not rectangular cartesian')
         return False
@@ -100,7 +100,7 @@ def transformCoordinates(field, rotationScale, offset, time = 0.0):
                 if result != ZINC_OK:
                     success = False
                 else:
-                    newValues = matrixvectormult(rotationScale, values)
+                    newValues = elmult(rotationScale, values)
                     if derivative == Node.VALUE_LABEL_VALUE:
                         newValues = add(newValues, offset)
                     result = feField.setNodeParameters(cache, -1, derivative, v, newValues)
@@ -232,7 +232,37 @@ def setScaffoldNodeParameters(field, newNodeParams, time=0.0):
         nodeCount += 1
     fm.endChange()
     if not success:
-        print('zinc.getScaffoldNodalParametersToList: failed to get/set some values')
+        print('zincutils.getScaffoldNodalParametersToList: failed to get/set some values')
+    return success
+
+
+def setDataScale(field, scale):
+    if not isinstance(scale, list):
+        scale = [scale]*3
+    feField = field.castFiniteElement()
+    success = True
+    fm = field.getFieldmodule()
+    fm.beginChange()
+    cache = fm.createFieldcache()
+    datapoints = fm.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+    nodetemplate = datapoints.createNodetemplate()
+    nodeIter = datapoints.createNodeiterator()
+    node = nodeIter.next()
+    nodeCount = 1
+    while node.isValid():
+        # nodetemplate.defineFieldFromNode(feField, node)
+        cache.setNode(node)
+        _, coor = feField.evaluateReal(cache, 3)
+        newValues = elmult(coor, scale)
+        result = feField.setNodeParameters(cache, -1, Node.VALUE_LABEL_VALUE, 1, newValues)
+        if result != ZINC_OK:
+            success = False
+        node = nodeIter.next()
+        nodeCount += 1
+    fm.endChange()
+    print(nodeCount)
+    if not success:
+        print('zincutils.setDataScale: failed to get/set some values')
     return success
 
 
@@ -268,11 +298,13 @@ def swap_axes(source_field, axes=None):
                 else:
                     if axes == 'yz':
                         new_values = [values[axis_x], values[axis_z], values[axis_y]]
+                        result = field.setNodeParameters(cache, -1, derivative, v, new_values)
+                        new_values = [new_values[0], new_values[1], -new_values[2]]
+                        result = field.setNodeParameters(cache, -1, derivative, v, new_values)
                     elif axes == 'xz':
                         new_values = [values[axis_z], values[axis_y], values[axis_x]]
                     else:  # 'xy'
                         new_values = [values[axis_y], values[axis_x], values[axis_z]]
-                    result = field.setNodeParameters(cache, -1, derivative, v, new_values)
                     if result != ZINC_OK:
                         success = False
         node = nodeIter.next()

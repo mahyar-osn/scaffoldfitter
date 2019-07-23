@@ -9,6 +9,9 @@ class Rigid(object):
     likelihood. A "coherence" constraint is imposed by re-parametrisation of GMM centroids with rigid parameters (i.e. scaling,
     translation, and rotation) and the closed form solution of the maximization step of the Expectation-Maximization algorithm
     is derived.
+
+
+    UPDATE 7 June 2019: This is not being used for the rigid alignment at this stage.
     """
 
     def __init__(self, X, Y, R=None, t=None, s=None, sigma2=None, max_iter=100, tolerance=0.001, w=0):
