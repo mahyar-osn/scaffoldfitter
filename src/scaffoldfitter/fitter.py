@@ -23,6 +23,7 @@ class Fitter(object):
         self._modelRotationScaleField = None
         self._modelOffsetField = None
         self._dataCoordinateField = None
+        self.dataModelDifference = None
         self._activeDataPointGroupField = None
         self._mesh = None
         self._modelCentre = None
@@ -51,16 +52,15 @@ class Fitter(object):
         modelMinimums, modelMaximums = self._getModelRange()
         modelRange = maths.sub(modelMaximums, modelMinimums)
         tmp = [modelRange[0], modelRange[2], modelRange[1]]
-        dataModelDifference = maths.eldiv(dataRange, tmp)
-        meanScale = (sum(dataModelDifference) / len(dataModelDifference))
+        self.dataModelDifference = maths.eldiv(dataRange, tmp)
+        meanScale = (sum(self.dataModelDifference) / len(self.dataModelDifference))
         # dataModelDifference = [dataModelDifference[0]*0.4, dataModelDifference[1]*0.4, dataModelDifference[2]*0.4]
-        self.setAlignScale(dataModelDifference)
-        self.setStatePostAlign()
-        self.resetAlignSettings()
+        # self.setAlignScale(self.dataModelDifference)
+        # self.setStatePostAlign()
+        self.setAlignScale(1.0)
+        # self.resetAlignSettings()
 
     def getInitialDataScale(self):
-        # TODO: Some extremely large data should be scaled down
-
         dataMinimums, dataMaximums = self._getDataRange()
         dataRange = maths.sub(dataMaximums, dataMinimums)
         modelMinimums, modelMaximums = self._getModelRange()
@@ -69,7 +69,7 @@ class Fitter(object):
         dataModelDifference = maths.eldiv(tmp, dataRange)
         meanScale = (sum(dataModelDifference) / len(dataModelDifference))
         self._dataScale = meanScale
-        self.setDataPostScale()
+        # self.setDataPostScale()
 
     def autoCentreModelOnData(self):
         dataMinimums, dataMaximums = self._getDataRange()
@@ -332,7 +332,7 @@ class Fitter(object):
         tmpTrue = fm.createFieldConstant([1])
         activeDatapointsGroup = self._activeDataPointGroupField.getNodesetGroup()
         activeDatapointsGroup.addNodesConditional(tmpTrue)
-        dimension = mesh2d.getDimension()
+        dimension = mesh3d.getDimension()
 
         fm.beginChange()
         self._dataProjectionCoordinateField = fm.createFieldEmbedded(self._modelCoordinateField,
@@ -354,7 +354,7 @@ class Fitter(object):
 
         while datapoint.isValid():
             cache.setNode(datapoint)
-            element, xi = self._findMeshLocationField.evaluateMeshLocation(cache, 3)
+            element, xi = self._findMeshLocationField.evaluateMeshLocation(cache, dimension)
             if element.isValid():
                 datapoint.merge(nodetemplate)
                 xi = [xi[0], xi[1], 1.0]
@@ -391,7 +391,7 @@ class Fitter(object):
                 lineMesh = lineMeshGroup
 
         numberOfGaussPoints = 4
-        penalty = 10.0
+        penalty = 1.
         strainField = self._getStrainField()
         weightField = fm.createFieldConstant([penalty])
         weightedStrainField = fm.createFieldMultiply(strainField, weightField)
@@ -401,7 +401,7 @@ class Fitter(object):
         weightedStrainFieldIntegral.setNumbersOfPoints(numberOfGaussPoints)
         result = optimisation.addObjectiveField(weightedStrainFieldIntegral)
 
-        eEdgeDiscontinuityPenalty = 1.0
+        eEdgeDiscontinuityPenalty = 0.001
         edgeDiscontinuityField = fm.createFieldEdgeDiscontinuity(self._modelCoordinateField)
         weightField = fm.createFieldConstant([eEdgeDiscontinuityPenalty])
         weightedEdgeDiscontinuityField = edgeDiscontinuityField * weightField
@@ -427,6 +427,8 @@ class Fitter(object):
         result = optimisation.setAttributeInteger(Optimisation.ATTRIBUTE_MAXIMUM_ITERATIONS, 1)
         if result != ZINC_OK:
             raise ValueError('Could not set optimisation maximum iterations')
+
+        self._region.writeFile('D:\\sparc\\3SCANFitting.ex')
 
         result = optimisation.optimise()
         solution = optimisation.getSolutionReport()
@@ -521,36 +523,36 @@ class Fitter(object):
     def _getChildRegion(self):
         self._region = self._region.getFirstChild()
 
-    # def applyAlignSettings(self):
-    #     rot = maths.eulerToRotationMatrix3(self._alignSettings['euler_angles'])
-    #     scale = self._alignSettings['scale']
-    #     if isinstance(scale, float):
-    #         scale = [scale]*3
-    #     elif not (isinstance(scale, list) and len(scale) == 3):
-    #         scale = [1.0]*3
-    #     xScale = scale
-    #     if self.isAlignMirror():
-    #         xScale = -scale
-    #     rotationScale = [
-    #         rot[0][0] * scale[0], rot[0][1] * scale[0], rot[0][2] * scale[0],
-    #         rot[1][0] * scale[1], rot[1][1] * scale[1], rot[1][2] * scale[1],
-    #         rot[2][0] * scale[2], rot[2][1] * scale[2], rot[2][2] * scale[2]]
-    #     fm = self._region.getFieldmodule()
-    #     fm.beginChange()
-    #     if self._modelTransformedCoordinateField is None:
-    #         self._modelRotationScaleField = fm.createFieldConstant(rotationScale)
-    #         # following works in 3-D only
-    #         temp1 = fm.createFieldMatrixMultiply(3, self._modelRotationScaleField, self._modelCoordinateField)
-    #         self._modelOffsetField = fm.createFieldConstant(self._alignSettings['offset'])
-    #         self._modelTransformedCoordinateField = fm.createFieldAdd(temp1, self._modelOffsetField)
-    #     else:
-    #         cache = fm.createFieldcache()
-    #         self._modelRotationScaleField.assignReal(cache, rotationScale)
-    #         self._modelOffsetField.assignReal(cache, self._alignSettings['offset'])
-    #     fm.endChange()
-    #     if not self._modelTransformedCoordinateField.isValid():
-    #         print("Can't create transformed model coordinate field. Is problem 2-D?")
-    #     self._alignSettingsChangeCallback()
+    def applyAlignSettings(self):
+        rot = maths.eulerToRotationMatrix3(self._alignSettings['euler_angles'])
+        scale = self._alignSettings['scale']
+        if isinstance(scale, float):
+            scale = [scale]*3
+        elif not (isinstance(scale, list) and len(scale) == 3):
+            scale = [1.0]*3
+        xScale = scale
+        if self.isAlignMirror():
+            xScale = -scale
+        rotationScale = [
+            rot[0][0] * scale[0], rot[0][1] * scale[0], rot[0][2] * scale[0],
+            rot[1][0] * scale[1], rot[1][1] * scale[1], rot[1][2] * scale[1],
+            rot[2][0] * scale[2], rot[2][1] * scale[2], rot[2][2] * scale[2]]
+        fm = self._region.getFieldmodule()
+        fm.beginChange()
+        if self._modelTransformedCoordinateField is None:
+            self._modelRotationScaleField = fm.createFieldConstant(rotationScale)
+            # following works in 3-D only
+            temp1 = fm.createFieldMatrixMultiply(3, self._modelRotationScaleField, self._modelCoordinateField)
+            self._modelOffsetField = fm.createFieldConstant(self._alignSettings['offset'])
+            self._modelTransformedCoordinateField = fm.createFieldAdd(temp1, self._modelOffsetField)
+        else:
+            cache = fm.createFieldcache()
+            self._modelRotationScaleField.assignReal(cache, rotationScale)
+            self._modelOffsetField.assignReal(cache, self._alignSettings['offset'])
+        fm.endChange()
+        if not self._modelTransformedCoordinateField.isValid():
+            print("Can't create transformed model coordinate field. Is problem 2-D?")
+        self._alignSettingsChangeCallback()
 
     def setAlignSettingsChangeCallback(self, alignSettingsChangeCallback):
         self._alignSettingsChangeCallback = alignSettingsChangeCallback
