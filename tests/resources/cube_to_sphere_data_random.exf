@@ -656,28 +656,28 @@ Node: 162
  -1.711938748360189e-01
   4.549287173574261e-01
 #Fields=2
-1) fiducial_data_coordinates, coordinate, rectangular cartesian, real, #Components=3
+1) marker_data_coordinates, coordinate, rectangular cartesian, real, #Components=3
  x. #Values=1 (value)
  y. #Values=1 (value)
  z. #Values=1 (value)
-2) fiducial_data_label, field, rectangular cartesian, string, #Components=1
+2) marker_data_label, field, rectangular cartesian, string, #Components=1
  1. #Values=1 (value)
-Node: 100001
+Node: 1000001
   0.000000000000000e+00
   0.000000000000000e+00
  -5.000000000000000e-01
  bottom
-Node: 100002
+Node: 1000002
   0.000000000000000e+00
   0.000000000000000e+00
   5.000000000000000e-01
  top
-Node: 100003
+Node: 1000003
  -5.000000000000000e-01
   0.000000000000000e+00
   0.000000000000000e+00
  left
-Node: 100004
+Node: 1000004
   5.000000000000000e-01
   0.000000000000000e+00
   0.000000000000000e+00
@@ -711,14 +711,14 @@ Node: 28
 Node: 30
 Node: 32
 Node: 34
- Group name: fiducial
+ Group name: marker
 !#nodeset datapoints
 Shape. Dimension=0
 #Fields=0
-Node: 100001
-Node: 100002
-Node: 100003
-Node: 100004
+Node: 1000001
+Node: 1000002
+Node: 1000003
+Node: 1000004
  Group name: sides
 !#nodeset datapoints
 Shape. Dimension=0

@@ -41,20 +41,20 @@ Node: 8
   1.000000000000000e+00  0.000000000000000e+00  0.000000000000000e+00  1.000000000000000e+00
 Shape. Dimension=0
 #Fields=2
-1) fiducial_location, field, rectangular cartesian, element_xi, #Components=1, host mesh=mesh3d, host mesh dimension=3
+1) marker_location, field, rectangular cartesian, element_xi, #Components=1, host mesh=mesh3d, host mesh dimension=3
  1. #Values=1 (value)
-2) fiducial_label, field, rectangular cartesian, string, #Components=1
+2) marker_label, field, rectangular cartesian, string, #Components=1
  1. #Values=1 (value)
-Node: 100001
+Node: 1000001
  1  5.000000000000000e-01  5.000000000000000e-01  0.000000000000000e+00
  bottom
-Node: 100002
+Node: 1000002
  1  0.000000000000000e+00  0.000000000000000e+00  5.000000000000000e-01
  left
-Node: 100003
+Node: 1000003
  1  1.000000000000000e+00  1.000000000000000e+00  5.000000000000000e-01
  right
-Node: 100004
+Node: 1000004
  1  5.000000000000000e-01  5.000000000000000e-01  1.000000000000000e+00
  top
 !#mesh mesh1d, dimension=1, nodeset=nodes
@@ -329,14 +329,14 @@ Shape. Dimension=2, line*line
 #Nodes=0
 #Fields=0
 Element: 5
- Group name: fiducial
+ Group name: marker
 !#nodeset nodes
 Shape. Dimension=0
 #Fields=0
-Node: 100001
-Node: 100002
-Node: 100003
-Node: 100004
+Node: 1000001
+Node: 1000002
+Node: 1000003
+Node: 1000004
  Group name: sides
 !#nodeset nodes
 Shape. Dimension=0

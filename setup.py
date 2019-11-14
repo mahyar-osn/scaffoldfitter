@@ -24,21 +24,22 @@ requires = [
 ]
 source_license = readfile("LICENSE")
 
-setup(name='scaffoldfitter',
-    version='0.1.0',
-    description='',
-    long_description='\n'.join(readme) + source_license,
+setup(
+    name="scaffoldfitter",
+    version="0.1.1",
+    description="Scaffold/model fitter using OpenCMISS-Zinc.",
+    long_description="\n".join(readme) + source_license,
     classifiers=[
-      "Development Status :: 3 - Alpha",
-      "License :: OSI Approved :: Apache Software License",
-      "Programming Language :: Python",
+        "Development Status :: 3 - Alpha",
+        "Programming Language :: Python",
+        "Topic :: Scientific/Engineering :: Medical Science Apps."
     ],
-    author='Richard Christie',
-    author_email='',
-    url='',
-    license='APACHE',
-    packages=find_packages(exclude=['ez_setup',]),
-    package_dir={'': 'src'},
+    author="Auckland Bioengineering Institute",
+    author_email="r.christie@auckland.ac.nz",
+    url="https://github.com/ABI-Software/scaffoldfitter",
+    license="Apache Software License",
+    packages=find_packages("src"),
+    package_dir={"": "src"},
     include_package_data=True,
     zip_safe=False,
     install_requires=requires,

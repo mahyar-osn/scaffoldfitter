@@ -1,16 +1,17 @@
 import math
 import os
 import unittest
+from opencmiss.zinc.result import RESULT_OK
 from scaffoldfitter.scaffit import Scaffit
 from scaffoldfitter.fit_step_align import FitStepAlign
+from scaffoldfitter.fit_step_fitgeometry import FitStepFitGeometry
+from scaffoldfitter.utils.zinc_utils import ZincCacheChanges
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-def createScaffitForCubeToSphere():
+def createScaffitForCubeToSphere(dataFileName):
     zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
-    #print("zinc_model_file", zinc_model_file)
-    zinc_data_file = os.path.join(here, "resources", "cube_to_sphere_data.exf")
-    #print("zinc_data_file", zinc_data_file)
+    zinc_data_file = os.path.join(here, "resources", dataFileName)
     scaffit = Scaffit(zinc_model_file, zinc_data_file)
     scaffit.setModelCoordinatesFieldByName("coordinates")
     scaffit.setDataCoordinatesFieldByName("data_coordinates")
@@ -67,11 +68,11 @@ def rigidBodyTransform(transformationMatrix, translation, x):
 
 class FitCubeToSphereTestCase(unittest.TestCase):
 
-    def test1_alignFixed(self):
+    def test_alignFixedRandomData(self):
         """
         Test alignment of model and data to known transformations.
         """
-        scaffit = createScaffitForCubeToSphere()
+        scaffit = createScaffitForCubeToSphere("cube_to_sphere_data_random.exf")
         bottomCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
         sidesCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
         topCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
@@ -88,8 +89,9 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         align.setRotation([ math.pi/4.0, math.pi/8.0, math.pi/2.0 ])
         align.setTranslation([ 0.1, 0.2, 0.3 ])
         align.setScale(1.1)
-        align.setAlignLandmarks(False)
+        align.setAlignMarkers(False)
         errorString = align.run()
+        self.assertIsNone(errorString, errorString)
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
@@ -106,34 +108,68 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         assertAlmostEqualList(self, bottomDataCentre2, rigidBodyTransform(rotationMatrix, translation, bottomDataCentre1), delta=1.0E-7)
         assertAlmostEqualList(self, sidesDataCentre2, rigidBodyTransform(rotationMatrix, translation, sidesDataCentre1), delta=1.0E-7)
         assertAlmostEqualList(self, topDataCentre2, rigidBodyTransform(rotationMatrix, translation, topDataCentre1), delta=1.0E-7)
-        scaffit.writeModel(os.path.join(here, "resources", "km.exf"))
-        scaffit.writeData(os.path.join(here, "resources", "km_data.exf"))
-        self.assertIsNone(errorString, errorString)
 
-    def test2_alignLandmarks(self):
+    def test_alignMarkersFitRegularData(self):
         """
-        Test automatic alignment of model and data using landmarks.
+        Test automatic alignment of model and data using fiducial markers.
         """
-        scaffit = createScaffitForCubeToSphere()
+        scaffit = createScaffitForCubeToSphere("cube_to_sphere_data_regular.exf")
+
+        scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry0.exf"))
+        coordinates = scaffit.getModelCoordinatesField()
+        fieldmodule = scaffit.getFieldmodule()
+        with ZincCacheChanges(fieldmodule):
+            one = fieldmodule.createFieldConstant(1.0)
+            surfaceAreaField = fieldmodule.createFieldMeshIntegral(one, coordinates, scaffit.getMesh(2))
+            surfaceAreaField.setNumbersOfPoints(4)
+            volumeField = fieldmodule.createFieldMeshIntegral(one, coordinates, scaffit.getMesh(3))
+            volumeField.setNumbersOfPoints(3)
+        fieldcache = fieldmodule.createFieldcache()
+        result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(surfaceArea, 6.0, delta=1.0E-6)
+        result, volume = volumeField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(volume, 1.0, delta=1.0E-7)
+
         align = FitStepAlign(scaffit)
-        align.setAlignLandmarks(True)
+        align.setAlignMarkers(True)
         errorString = align.run()
+        self.assertIsNone(errorString, errorString)
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
-        #print('rotation', rotation)
-        #print('scale', scale)
-        #print('translation', translation)
-        self.assertAlmostEqual(rotation[0], 0.25*math.pi, delta=1.0E-4)
-        self.assertAlmostEqual(rotation[1], 0.0, delta=1.0E-7)
-        self.assertAlmostEqual(rotation[2], 0.0, delta=1.0E-7)
+        assertAlmostEqualList(self, rotation, [ 0.25*math.pi, 0.0, 0.0 ], delta=1.0E-4)
         self.assertAlmostEqual(scale, 0.8047378562670332, places=5)
-        self.assertAlmostEqual(translation[0], 0.5690355977219919, places=5)
-        self.assertAlmostEqual(translation[1], 6.62241378307982e-06, places=5)
-        self.assertAlmostEqual(translation[2], 0.4023689282781041, places=5)
-        scaffit.writeModel(os.path.join(here, "resources", "km2.exf"))
-        scaffit.writeData(os.path.join(here, "resources", "km2_data.exf"))
+        assertAlmostEqualList(self, translation, [ 0.5690355977219919, 6.62241378307982e-06, 0.4023689282781041 ], delta=1.0E-7)
+        result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(surfaceArea, 3.8856181038555655, delta=1.0E-6)
+        result, volume = volumeField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(volume, 0.5211506638615166, delta=1.0E-6)
+
+        fitGeometry0 = FitStepFitGeometry(scaffit)
+        fitGeometry0.setNumberOfIterations(0)
+        errorString = fitGeometry0.run()
+        scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
+
+        fitGeometry1 = FitStepFitGeometry(scaffit)
+        fitGeometry1.setMarkerWeight(1.0)
+        fitGeometry1.setCurvaturePenaltyWeight(0.1)
+        fitGeometry1.setNumberOfIterations(3)
+        fitGeometry1.setUpdateReferenceCoordinates(True)
+        errorString = fitGeometry1.run()
         self.assertIsNone(errorString, errorString)
+        scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
+
+        result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(surfaceArea, 3.1892107388163824, delta=1.0E-6)
+        result, volume = volumeField.evaluateReal(fieldcache, 1)
+        self.assertEqual(result, RESULT_OK)
+        self.assertAlmostEqual(volume, 0.5276197810475188, delta=1.0E-6)
+
 
 if __name__ == "__main__":
     unittest.main()

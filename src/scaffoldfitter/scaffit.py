@@ -6,7 +6,8 @@ import json
 from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.result import RESULT_OK
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldClone, evaluateNodesetMeanCoordinates
+from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldClone, evaluateNodesetMeanCoordinates, \
+    findNodeWithLabel, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, getUniqueFieldName, ZincCacheChanges
 
 
 class Scaffit:
@@ -20,8 +21,15 @@ class Scaffit:
         self._modelCoordinatesField = None
         self._modelReferenceCoordinatesField = None
         self._dataCoordinatesField = None
-        self._mesh = None
-        self._landmarkGroup = None
+        self._mesh = []  # [dimension - 1]
+        self._dataProjectionMeshLocationField = [ ]  # [dimension - 1]
+        self._dataProjectionNodeGroupField = []  # [dimension - 1]
+        self._dataProjectionNodesetGroup = []  # [dimension - 1]
+        self._dataProjectionDirectionField = None  # for storing original projection direction unit vector
+        self._markerGroup = None
+        self._markerDataLocationField = None
+        self._markerDataLocationNodeGroupField = None
+        self._markerDataLocationNodesetGroup = None
         self._fitSteps = []
         self._loadModel()
 
@@ -30,39 +38,148 @@ class Scaffit:
         self._fieldmodule = self._region.getFieldmodule()
         result = self._region.readFile(self._zincModelFileName)
         assert result == RESULT_OK, "Failed to load model file" + str(self._zincModelFileName)
-        for dimension in range(3, 0, -1):
-            self._mesh = self._fieldmodule.findMeshByDimension(dimension)
-            if self._mesh.getSize() > 0:
-                break
-        else:
-            assert self._mesh.getSize() > 0, "No elements in model"
         result = self._region.readFile(self._zincDataFileName)
         assert result == RESULT_OK, "Failed to load data file" + str(self._zincDataFileName)
-        landmarkGroup = self._fieldmodule.findFieldByName("fiducial").castGroup()
-        if landmarkGroup.isValid():
-            self._landmarkGroup = landmarkGroup
+        markerGroup = self._fieldmodule.findFieldByName("marker").castGroup()
+        self._mesh = [ self._fieldmodule.findMeshByDimension(d + 1) for d in range(3) ]
+        if markerGroup.isValid():
+            self._markerGroup = markerGroup
+            self._calculateMarkerDataLocations()
+        with ZincCacheChanges(self._fieldmodule):
+            datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+            for d in range(2):
+                mesh = self._mesh[d]
+                self._dataProjectionMeshLocationField.append(getOrCreateFieldMeshLocation(self._fieldmodule, mesh, namePrefix = "data_projection_location_"))
+                field = self._fieldmodule.createFieldNodeGroup(datapoints)
+                field.setName(getUniqueFieldName(self._fieldmodule, "data_projection_" + mesh.getName()))
+                self._dataProjectionNodeGroupField.append(field)
+                self._dataProjectionNodesetGroup.append(field.getNodesetGroup())
+            self._dataProjectionDirectionField = getOrCreateFieldFiniteElement(self._fieldmodule, "data_projection_direction", 3, [ "x", "y", "z" ])
 
     def _addFitStep(self, fitStep):
         self._fitSteps.append(fitStep)
         print('_addFitStep type', fitStep.getTypeId())
 
-    def getLandmarkGroup(self):
-        return self._landmarkGroup
-
-    def getLandmarkDataFields(self):
+    def _calculateMarkerDataLocations(self):
         """
-        Only call if landmarkGroup exists.
-        :return: landmarkDataGroup, landmarkDataCoordinates, landmarkDataLabel
+        Called when markerGroup exists.
+        Find matching marker mesh locations for marker data points.
+        Only finds matching location where there is one datapoint and one node
+        for each label in marker group.
+        Adds those that are found into _markerDataLocationNodesetGroup.
+        """
+        markerDataGroup, markerDataCoordinates, markerDataLabel = self.getMarkerDataFields()
+        markerNodeGroup, markerLocation, markerLabel = self.getMarkerModelFields()
+        # assume marker locations are in highest dimension mesh (GRC can't yet query host mesh for markerLocation)
+        mesh = self.getHighestDimensionMesh()
+        datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+        meshDimension = mesh.getDimension()
+        fieldcache = self._fieldmodule.createFieldcache()
+        with ZincCacheChanges(self._fieldmodule):
+            self._markerDataLocationField = getOrCreateFieldMeshLocation(self._fieldmodule, mesh, "marker_data_location_")
+            self._markerDataLocationNodeGroupField = self._fieldmodule.createFieldNodeGroup(datapoints)
+            self._markerDataLocationNodeGroupField.setName(getUniqueFieldName(self._fieldmodule, "marker_data_location_group"))
+            self._markerDataLocationNodesetGroup = self._markerDataLocationNodeGroupField.getNodesetGroup()
+            nodetemplate = markerDataGroup.createNodetemplate()
+            nodetemplate.defineField(self._markerDataLocationField)
+            datapointIter = markerDataGroup.createNodeiterator()
+            datapoint = datapointIter.next()
+            while datapoint.isValid():
+                fieldcache.setNode(datapoint)
+                label = markerDataLabel.evaluateString(fieldcache)
+                # if this is the only datapoint with label:
+                if label and findNodeWithLabel(markerDataGroup, markerDataLabel, label):
+                    node = findNodeWithLabel(markerNodeGroup, markerLabel, label)
+                    if node:
+                        fieldcache.setNode(node)
+                        element, xi = markerLocation.evaluateMeshLocation(fieldcache, meshDimension)
+                        if element.isValid():
+                            datapoint.merge(nodetemplate)
+                            self._markerDataLocationNodesetGroup.addNode(datapoint)
+                            fieldcache.setNode(datapoint)
+                            self._markerDataLocationField.assignMeshLocation(fieldcache, element, xi)
+                datapoint = datapointIter.next()
+        # Warn about datapoints without a location in model
+        markerDataGroupSize = markerDataGroup.getSize()
+        markerDataLocationGroupSize = self._markerDataLocationNodesetGroup.getSize()
+        markerNodeGroupSize = markerNodeGroup.getSize()
+        if markerDataLocationGroupSize < markerDataGroupSize:
+            print("Warning: Only " + str(markerDataLocationGroupSize) + " of " + str(markerDataGroupSize) + " marker data points have model locations")
+        if markerDataLocationGroupSize < markerNodeGroupSize:
+            print("Warning: Only " + str(markerDataLocationGroupSize) + " of " + str(markerNodeGroupSize) + " marker model locations used")
+
+    def getMarkerGroup(self):
+        return self._markerGroup
+
+    def getMarkerDataFields(self):
+        """
+        Only call if markerGroup exists.
+        :return: markerDataGroup, markerDataCoordinates, markerDataLabel
         """
         datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
-        landmarkPrefix = self._landmarkGroup.getName()
-        landmarkDataGroup = self._landmarkGroup.getFieldNodeGroup(datapoints).getNodesetGroup()
-        landmarkDataCoordinates = self._fieldmodule.findFieldByName(landmarkPrefix + "_data_coordinates")
-        landmarkDataLabel = self._fieldmodule.findFieldByName(landmarkPrefix + "_data_label")
-        return landmarkDataGroup, landmarkDataCoordinates, landmarkDataLabel
+        markerPrefix = self._markerGroup.getName()
+        markerDataGroup = self._markerGroup.getFieldNodeGroup(datapoints).getNodesetGroup()
+        markerDataCoordinates = self._fieldmodule.findFieldByName(markerPrefix + "_data_coordinates")
+        markerDataLabel = self._fieldmodule.findFieldByName(markerPrefix + "_data_label")
+        return markerDataGroup, markerDataCoordinates, markerDataLabel
 
-    def getMesh(self):
-        return self._mesh
+    def getMarkerModelFields(self):
+        """
+        Only call if markerGroup exists.
+        :return: markerNodeGroup, markerLocation, markerLabel
+        """
+        nodes = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
+        markerPrefix = self._markerGroup.getName()
+        markerNodeGroup = self._markerGroup.getFieldNodeGroup(nodes).getNodesetGroup()
+        markerLocation = self._fieldmodule.findFieldByName(markerPrefix + "_location")
+        markerLabel = self._fieldmodule.findFieldByName(markerPrefix + "_label")
+        return markerNodeGroup, markerLocation, markerLabel
+
+    def clearDataProjectionNodesetGroups(self):
+        with ZincCacheChanges(self._fieldmodule):
+            for d in range(2):
+                self._dataProjectionNodesetGroup[d].removeAllNodes()
+
+    def getDataProjectionDirectionField(self):
+        return self._dataProjectionDirectionField
+
+    def getDataProjectionNodeGroupField(self, dimension):
+        assert 1 <= dimension <= 2
+        return self._dataProjectionNodeGroupField[dimension - 1]
+
+    def getDataProjectionNodesetGroup(self, dimension):
+        assert 1 <= dimension <= 2
+        return self._dataProjectionNodesetGroup[dimension - 1]
+
+    def getDataProjectionMeshLocationField(self, dimension):
+        assert 1 <= dimension <= 2
+        return self._dataProjectionMeshLocationField[dimension - 1]
+
+    def getMarkerDataLocationNodesetGroup(self):
+        return self._markerDataLocationNodesetGroup
+
+    def getMarkerDataLocationField(self):
+        return self._markerDataLocationField
+
+    def getRegion(self):
+        return self._region
+
+    def getFieldmodule(self):
+        return self._fieldmodule
+
+    def getMesh(self, dimension):
+        assert 1 <= dimension <= 3
+        return self._mesh[dimension - 1]
+
+    def getHighestDimensionMesh(self):
+        """
+        :return: Highest dimension mesh with elements in it, or None if none.
+        """
+        for d in range(2, -1, -1):
+            mesh = self._mesh[d]
+            if mesh.getSize() > 0:
+                return mesh
+        return None
 
     def evaluateNodeGroupMeanCoordinates(self, groupName, coordinatesFieldName, isData = False):
         group = self._fieldmodule.findFieldByName(groupName).castGroup()
@@ -71,7 +188,7 @@ class Scaffit:
         nodesetGroup = group.getFieldNodeGroup(nodeset).getNodesetGroup()
         assert nodesetGroup.isValid()
         coordinates = self._fieldmodule.findFieldByName(coordinatesFieldName)
-        return evaluateNodesetMeanCoordinates(nodesetGroup, coordinates)
+        return evaluateNodesetMeanCoordinates(coordinates, nodesetGroup)
 
     def getDataCoordinatesField(self):
         return self._dataCoordinatesField
@@ -87,6 +204,9 @@ class Scaffit:
 
     def getModelCoordinatesField(self):
         return self._modelCoordinatesField
+
+    def getModelReferenceCoordinatesField(self):
+        return self._modelReferenceCoordinatesField
 
     def setModelCoordinatesField(self, modelCoordinatesField):
         finiteElementField = modelCoordinatesField.castFiniteElement()
