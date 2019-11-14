@@ -205,6 +205,31 @@ def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePre
         meshLocationField.setManaged(True)
     return meshLocationField
 
+def createTransformationFields(coordinates : Field, rotationAngles = [ 0.0, 0.0, 0.0 ], scaleValue : float = 1.0, translationOffsets = [ 0.0, 0.0, 0.0 ]):
+    """
+    Create constant fields for rotation, scale and translation containing the supplied
+    values, plus the transformed coordinates applying them in the supplied order.
+    :param coordinates: The coordinate field to scale, 3 components.
+    :param rotationAngles: List of euler angles, length = number of components. See createFieldEulerAnglesRotationMatrix.
+    :param scaleValue: Scalar to multiply all components of coordinates.
+    :param translationOffsets: List of offsets, length = number of components.
+    :return: 4 fields: transformedCoordinates, rotation, scale, translation
+    """
+    componentsCount = coordinates.getNumberOfComponents()
+    assert (componentsCount == 3) and (len(rotationAngles) == componentsCount) and isinstance(scaleValue, float) \
+        and (len(translationOffsets) == componentsCount), "createTransformationFields.  Invalid arguments"
+    fieldmodule = coordinates.getFieldmodule()
+    with ZincCacheChanges(fieldmodule):
+        # scale, translate and rotate model, in that order
+        rotation = fieldmodule.createFieldConstant(rotationAngles)
+        scale = fieldmodule.createFieldConstant(scaleValue)
+        translation = fieldmodule.createFieldConstant(translationOffsets)
+        rotationMatrix = createFieldEulerAnglesRotationMatrix(fieldmodule, rotation)
+        rotatedCoordinates = fieldmodule.createFieldMatrixMultiply(componentsCount, rotationMatrix, coordinates)
+        transformedCoordinates = rotatedCoordinates*scale + translation
+        assert transformedCoordinates.isValid()
+    return transformedCoordinates, rotation, scale, translation
+
 def getGroupList(fieldmodule):
     """
     Get list of Zinc groups in fieldmodule.

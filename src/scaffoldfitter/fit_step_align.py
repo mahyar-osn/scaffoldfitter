@@ -5,7 +5,8 @@ Fit step for gross alignment and scale.
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldEulerAnglesRotationMatrix, getNodeNameCentres, ZincCacheChanges
+from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldEulerAnglesRotationMatrix, \
+    createTransformationFields, getNodeNameCentres, ZincCacheChanges
 from scaffoldfitter.scaffit import Scaffit, FitStep
 
 class FitStepAlign(FitStep):
@@ -62,47 +63,27 @@ class FitStepAlign(FitStep):
 
     def run(self):
         """
-        :return: None on success otherwise error string.
+        Perform align and scale.
         """
         modelCoordinates = self._fitter.getModelCoordinatesField()
-        dataCoordinates = self._fitter.getDataCoordinatesField()
-        if (not modelCoordinates) or (not dataCoordinates):
-            return "Align Step failed: data and/or model coordinate field not specified"
+        if not modelCoordinates:
+            return "Align Step failed: model coordinates field not specified"
         if self._alignMarkers:
             errorString = self._doAlignMarkers()
             if errorString:
                 return errorString
         fieldmodule = self._fitter._fieldmodule
         with ZincCacheChanges(fieldmodule):
-            # translate and rotate data
-            translation = fieldmodule.createFieldConstant(self._translation)
-            rotation = fieldmodule.createFieldConstant(self._rotation)
-            rotationMatrix = createFieldEulerAnglesRotationMatrix(fieldmodule, rotation)
-            dataCoordinatesTransformed = fieldmodule.createFieldMatrixMultiply(3, rotationMatrix,
-                fieldmodule.createFieldAdd(dataCoordinates, translation))
-            fieldassignment = self._fitter._dataCoordinatesField.createFieldassignment(dataCoordinatesTransformed)
-            fieldassignment.setNodeset(fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS))
+            # rotate, scale and translate model
+            modelCoordinatesTransformed = createTransformationFields(
+                modelCoordinates, self._rotation, self._scale, self._translation)[0]
+            fieldassignment = self._fitter._modelCoordinatesField.createFieldassignment(modelCoordinatesTransformed)
             result = fieldassignment.assign()
             if result not in [ RESULT_OK, RESULT_WARNING_PART_DONE ]:
-                return "Align Step: Failed to rigid body transform data"
-            markerGroup = self._fitter.getMarkerGroup()
-            if markerGroup.isValid():
-                markerDataGroup, markerDataCoordinates = self._fitter.getMarkerDataFields()[0:2]
-                markerDataCoordinatesTransformed = fieldmodule.createFieldMatrixMultiply(3, rotationMatrix,
-                    fieldmodule.createFieldAdd(markerDataCoordinates, translation))
-                fieldassignment = markerDataCoordinates.createFieldassignment(markerDataCoordinatesTransformed)
-                fieldassignment.setNodeset(markerDataGroup)
-                result = fieldassignment.assign()
-                if result not in [ RESULT_OK, RESULT_WARNING_PART_DONE ]:
-                    return "Align Step: Failed to rigid body transform markers"
-            # scale model
-            scale = fieldmodule.createFieldConstant(self._scale)
-            modelCoordinatesScaled = fieldmodule.createFieldMultiply(modelCoordinates, scale)
-            fieldassignment = self._fitter._modelCoordinatesField.createFieldassignment(modelCoordinatesScaled)
-            result = fieldassignment.assign()
-            if result not in [ RESULT_OK, RESULT_WARNING_PART_DONE ]:
-                return "Align Step: Failed to scale model"
+                return "Align Step: Failed to transform model"
             self._fitter.updateModelReferenceCoordinates()
+            del fieldassignment
+            del modelCoordinatesTransformed
         return None
 
     def _doAlignMarkers(self):
@@ -151,7 +132,7 @@ class FitStepAlign(FitStep):
     def _optimiseAlignment(self, markerMap):
         """
         Calculate transformation from modelCoordinates to dataMarkers
-        over the markers, by translating and rotating data, and scaling model.
+        over the markers, by scaling, translating and rotating model.
         :param markerMap: dict name -> (modelCoordinates, dataCoordinates)
         :return: None on success otherwise errorString. On success,
         sets transformation parameters in object.
@@ -161,28 +142,15 @@ class FitStepAlign(FitStep):
 
         region = self._fitter._context.createRegion()
         fieldmodule = region.getFieldmodule()
+        result = RESULT_OK
         with ZincCacheChanges(fieldmodule):
             modelCoordinates = fieldmodule.createFieldFiniteElement(3)
             dataCoordinates = fieldmodule.createFieldFiniteElement(3)
             nodes = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
-            # translate and rotate data
-            translation = fieldmodule.createFieldConstant([ 0.0, 0.0, 0.0 ])
-            rotation = fieldmodule.createFieldConstant([ 0.0, 0.0, 0.0 ])
-            rotationMatrix = createFieldEulerAnglesRotationMatrix(fieldmodule, rotation)
-            dataCoordinatesTransformed = fieldmodule.createFieldMatrixMultiply(3, rotationMatrix,
-                fieldmodule.createFieldAdd(dataCoordinates, translation))
-            # scale model
-            scale = fieldmodule.createFieldConstant([ 1.0 ])
-            modelCoordinatesScaled = fieldmodule.createFieldMultiply(modelCoordinates, scale)
-            # create objective = distance from dataCoordinatesTransformed to modelCoordinatesScaled
-            markerDiff = fieldmodule.createFieldSubtract(dataCoordinatesTransformed, modelCoordinatesScaled)
-            objective = fieldmodule.createFieldNodesetSumSquares(markerDiff, nodes)
-
             nodetemplate = nodes.createNodetemplate()
             nodetemplate.defineField(modelCoordinates)
             nodetemplate.defineField(dataCoordinates)
             fieldcache = fieldmodule.createFieldcache()
-            result = RESULT_OK
             for name, positions in markerMap.items():
                 modelx = positions[0]
                 datax = positions[1]
@@ -195,6 +163,11 @@ class FitStepAlign(FitStep):
                 if result != RESULT_OK:
                     break
             del fieldcache
+            modelCoordinatesTransformed, rotation, scale, translation = createTransformationFields(modelCoordinates)
+            # create objective = sum of squares of vector from modelCoordinatesTransformed to dataCoordinates
+            markerDiff = fieldmodule.createFieldSubtract(dataCoordinates, modelCoordinatesTransformed)
+            objective = fieldmodule.createFieldNodesetSumSquares(markerDiff, nodes)
+
         if result != RESULT_OK:
             return "Align Step: Align markers optimisation set up failed."
 
@@ -203,9 +176,9 @@ class FitStepAlign(FitStep):
         optimisation = fieldmodule.createOptimisation()
         optimisation.setMethod(Optimisation.METHOD_LEAST_SQUARES_QUASI_NEWTON)
         optimisation.addObjectiveField(objective)
-        optimisation.addIndependentField(translation)
-        optimisation.addIndependentField(scale)
         optimisation.addIndependentField(rotation)
+        optimisation.addIndependentField(scale)
+        optimisation.addIndependentField(translation)
 
         result = optimisation.optimise()
         solutionReport = optimisation.getSolutionReport()

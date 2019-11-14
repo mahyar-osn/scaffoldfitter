@@ -22,9 +22,6 @@ def assertAlmostEqualList(testcase, actualList, expectedList, delta):
     for actual, expected in zip(actualList, expectedList):
         testcase.assertAlmostEqual(actual, expected, delta=delta)
 
-def scaleList(values, scale):
-    return [ value*scale for value in values]
-
 def getRotationMatrix(eulerAngles):
     """
     From OpenCMISS-Zinc graphics_library.cpp, transposed.
@@ -52,19 +49,24 @@ def getRotationMatrix(eulerAngles):
         cos_elevation*cos_roll,
         ]
 
-def rigidBodyTransform(transformationMatrix, translation, x):
+def transformCoordinatesList(xIn : list, transformationMatrix, translation):
     """
-    :return: x offset by translation then multiplied by 9-component transformationMatrix.
+    Transforms coordinates by multiplying by 9-component transformationMatrix
+    then offsetting by translation.
+    :xIn: List of 3-D coordinates to transform:
+    :return: List of 3-D transformed coordinates.
     """
-    assert (len(transformationMatrix) == 9) and (len(translation) == 3) and (len(x) == 3)
-    x2 = [ (x[c] + translation[c]) for c in range(3) ]
-    x3 = []
-    for c in range(3):
-        v = 0.0
-        for d in range(3):
-            v += transformationMatrix[c*3 + d]*x2[d]
-        x3.append(v)
-    return x3
+    assert (len(xIn) > 0) and (len(xIn[0]) == 3) and (len(transformationMatrix) == 9) and (len(translation) == 3)
+    xOut = []
+    for x in xIn:
+        x2 = []
+        for c in range(3):
+            v = translation[c]
+            for d in range(3):
+                v += transformationMatrix[c*3 + d]*x[d]
+            x2.append(v)
+        xOut.append(x2)
+    return xOut
 
 class FitCubeToSphereTestCase(unittest.TestCase):
 
@@ -79,35 +81,26 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         assertAlmostEqualList(self, bottomCentre1, [ 0.5, 0.5, 0.0 ], delta=1.0E-7)
         assertAlmostEqualList(self, sidesCentre1, [ 0.5, 0.5, 0.5 ], delta=1.0E-7)
         assertAlmostEqualList(self, topCentre1, [ 0.5, 0.5, 1.0 ], delta=1.0E-7)
-        bottomDataCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "data_coordinates", isData = True)
-        sidesDataCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "data_coordinates", isData = True)
-        topDataCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("top", "data_coordinates", isData = True)
-        assertAlmostEqualList(self, bottomDataCentre1, [-0.009562266158420317, -0.0405228759928804, -0.42009164286986966], delta=1.0E-7)
-        assertAlmostEqualList(self, sidesDataCentre1, [0.0008220550281536953, -0.043375097752615326, 0.030232577990781825], delta=1.0E-7)
-        assertAlmostEqualList(self, topDataCentre1, [0.029623056646825956, 0.05656568887086555, 0.43379576749997456], delta=1.0E-7)
         align = FitStepAlign(scaffit)
-        align.setRotation([ math.pi/4.0, math.pi/8.0, math.pi/2.0 ])
-        align.setTranslation([ 0.1, 0.2, 0.3 ])
         align.setScale(1.1)
+        align.setTranslation([ 0.1, -0.2, 0.3 ])
+        align.setRotation([ math.pi/4.0, math.pi/8.0, math.pi/2.0 ])
         align.setAlignMarkers(False)
         errorString = align.run()
         self.assertIsNone(errorString, errorString)
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
+        rotationMatrix = getRotationMatrix(rotation)
+        transformationMatrix = [ v*scale for v in rotationMatrix ]
+        bottomCentre2Expected, sidesCentre2Expected, topCentre2Expected = transformCoordinatesList(
+            [ bottomCentre1, sidesCentre1, topCentre1 ], transformationMatrix, translation)
         bottomCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
         sidesCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
         topCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
-        assertAlmostEqualList(self, bottomCentre2, scaleList(bottomCentre1, scale), delta=1.0E-7)
-        assertAlmostEqualList(self, sidesCentre2, scaleList(sidesCentre1, scale), delta=1.0E-7)
-        assertAlmostEqualList(self, topCentre2, scaleList(topCentre1, scale), delta=1.0E-7)
-        bottomDataCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "data_coordinates", isData = True)
-        sidesDataCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "data_coordinates", isData = True)
-        topDataCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("top", "data_coordinates", isData = True)
-        rotationMatrix = getRotationMatrix(rotation)
-        assertAlmostEqualList(self, bottomDataCentre2, rigidBodyTransform(rotationMatrix, translation, bottomDataCentre1), delta=1.0E-7)
-        assertAlmostEqualList(self, sidesDataCentre2, rigidBodyTransform(rotationMatrix, translation, sidesDataCentre1), delta=1.0E-7)
-        assertAlmostEqualList(self, topDataCentre2, rigidBodyTransform(rotationMatrix, translation, topDataCentre1), delta=1.0E-7)
+        assertAlmostEqualList(self, bottomCentre2, bottomCentre2Expected, delta=1.0E-7)
+        assertAlmostEqualList(self, sidesCentre2, sidesCentre2Expected, delta=1.0E-7)
+        assertAlmostEqualList(self, topCentre2, topCentre2Expected, delta=1.0E-7)
 
     def test_alignMarkersFitRegularData(self):
         """
@@ -139,15 +132,15 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
-        assertAlmostEqualList(self, rotation, [ 0.25*math.pi, 0.0, 0.0 ], delta=1.0E-4)
-        self.assertAlmostEqual(scale, 0.8047378562670332, places=5)
-        assertAlmostEqualList(self, translation, [ 0.5690355977219919, 6.62241378307982e-06, 0.4023689282781041 ], delta=1.0E-7)
+        assertAlmostEqualList(self, rotation, [ -0.25*math.pi, 0.0, 0.0 ], delta=1.0E-4)
+        self.assertAlmostEqual(scale, 0.8047378476539072, places=5)
+        assertAlmostEqualList(self, translation, [ -0.5690355950594247, 1.1068454682130484e-05, -0.4023689233125251 ], delta=1.0E-6)
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(surfaceArea, 3.8856181038555655, delta=1.0E-6)
+        self.assertAlmostEqual(surfaceArea, 3.885618020657802, delta=1.0E-6)
         result, volume = volumeField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(volume, 0.5211506638615166, delta=1.0E-6)
+        self.assertAlmostEqual(volume, 0.5211506471189844, delta=1.0E-6)
 
         fitGeometry0 = FitStepFitGeometry(scaffit)
         fitGeometry0.setNumberOfIterations(0)
@@ -165,10 +158,10 @@ class FitCubeToSphereTestCase(unittest.TestCase):
 
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(surfaceArea, 3.1892107388163824, delta=1.0E-6)
+        self.assertAlmostEqual(surfaceArea, 3.1892231780263853, delta=1.0E-4)
         result, volume = volumeField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
-        self.assertAlmostEqual(volume, 0.5276197810475188, delta=1.0E-6)
+        self.assertAlmostEqual(volume, 0.5276229458448985, delta=1.0E-4)
 
 
 if __name__ == "__main__":
