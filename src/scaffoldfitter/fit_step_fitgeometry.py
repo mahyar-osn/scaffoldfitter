@@ -5,7 +5,7 @@ Fit step for gross alignment and scale.
 from opencmiss.zinc.field import Field, FieldFindMeshLocation
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createDisplacementGradientFields, findNodeWithLabel, ZincCacheChanges
+from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createDisplacementGradientFields, ZincCacheChanges
 from scaffoldfitter.scaffit import Scaffit, FitStep
 
 class FitStepFitGeometry(FitStep):

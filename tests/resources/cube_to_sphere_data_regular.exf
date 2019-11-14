@@ -1164,7 +1164,7 @@ Node: 288
  x. #Values=1 (value)
  y. #Values=1 (value)
  z. #Values=1 (value)
-2) marker_data_label, field, rectangular cartesian, string, #Components=1
+2) marker_data_name, field, rectangular cartesian, string, #Components=1
  1. #Values=1 (value)
 Node: 1000001
   0.000000000000000e+00

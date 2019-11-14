@@ -219,69 +219,69 @@ def getGroupList(fieldmodule):
         field = fielditer.next()
     return groups
 
-def findNodeWithLabel(nodeset : Nodeset, labelField : Field, label):
+def findNodeWithName(nodeset : Nodeset, nameField : Field, name):
     """
-    Get single node in nodeset with supplied label.
+    Get single node in nodeset with supplied name.
     :param nodeset: Zinc Nodeset or NodesetGroup to search.
-    :param labelField: The label field to match.
-    :param label: The label to match in labelField.
-    :return: Node with label, or None if 0 or multiple nodes with label.
+    :param nameField: The name field to match.
+    :param name: The name to match in nameField.
+    :return: Node with name, or None if 0 or multiple nodes with name.
     """
     fieldmodule = nodeset.getFieldmodule()
     fieldcache = fieldmodule.createFieldcache()
     nodeiter = nodeset.createNodeiterator()
-    nodeWithLabel = None
+    nodeWithName = None
     node = nodeiter.next()
     while node.isValid():
         fieldcache.setNode(node)
-        tempLabel = labelField.evaluateString(fieldcache)
-        if tempLabel == label:
-            if nodeWithLabel:
+        tempName = nameField.evaluateString(fieldcache)
+        if tempName == name:
+            if nodeWithName:
                 return None
-            nodeWithLabel = node
+            nodeWithName = node
         node = nodeiter.next()
-    return nodeWithLabel
+    return nodeWithName
 
-def getNodeLabelCentres(nodeset : Nodeset, coordinatesField : Field, labelField : Field):
+def getNodeNameCentres(nodeset : Nodeset, coordinatesField : Field, nameField : Field):
     """
-    Find mean locations of node coordinate with the same labels.
+    Find mean locations of node coordinate with the same names.
     :param nodeset: Zinc Nodeset or NodesetGroup to search.
     :param coordinatesField: The coordinate field to evaluate.
-    :param labelField: The label field to match.
-    :return: Dict of labels -> coordinates.
+    :param nameField: The name field to match.
+    :return: Dict of names -> coordinates.
     """
     componentsCount = coordinatesField.getNumberOfComponents()
     fieldmodule = nodeset.getFieldmodule()
     fieldcache = fieldmodule.createFieldcache()
-    labelRecords = {}  # label -> (coordinates, count)
+    nameRecords = {}  # name -> (coordinates, count)
     nodeiter = nodeset.createNodeiterator()
     node = nodeiter.next()
     while node.isValid():
         fieldcache.setNode(node)
-        label = labelField.evaluateString(fieldcache)
+        name = nameField.evaluateString(fieldcache)
         coordinatesResult, coordinates = coordinatesField.evaluateReal(fieldcache, componentsCount)
-        if label and (coordinatesResult == RESULT_OK):
-            labelRecord = labelRecords.get(label)
-            if labelRecord:
-                labelCentre = labelRecord[0]
+        if name and (coordinatesResult == RESULT_OK):
+            nameRecord = nameRecords.get(name)
+            if nameRecord:
+                nameCentre = nameRecord[0]
                 for c in range(componentsCount):
-                    labelCentre[c] += coordinates[c]
-                labelRecord[1] += 1
+                    nameCentre[c] += coordinates[c]
+                nameRecord[1] += 1
             else:
-                labelRecords[label] = (coordinates, 1)
+                nameRecords[name] = (coordinates, 1)
         node = nodeiter.next()
     # divide centre coordinates by count
-    labelCentres = {}
-    for label in labelRecords:
-        labelRecord = labelRecords[label]
-        labelCount = labelRecord[1]
-        labelCentre = labelRecord[0]
-        if labelCount > 1:
-            scale = 1.0/labelCount
+    nameCentres = {}
+    for name in nameRecords:
+        nameRecord = nameRecords[name]
+        nameCount = nameRecord[1]
+        nameCentre = nameRecord[0]
+        if nameCount > 1:
+            scale = 1.0/nameCount
             for c in range(componentsCount):
-                labelCentre[c] *= scale
-        labelCentres[label] = labelCentre
-    return labelCentres
+                nameCentre[c] *= scale
+        nameCentres[name] = nameCentre
+    return nameCentres
 
 def evaluateNodesetMeanCoordinates(coordinates : Field, nodeset : Nodeset):
     """

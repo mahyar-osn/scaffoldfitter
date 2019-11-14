@@ -43,7 +43,7 @@ Shape. Dimension=0
 #Fields=2
 1) marker_location, field, rectangular cartesian, element_xi, #Components=1, host mesh=mesh3d, host mesh dimension=3
  1. #Values=1 (value)
-2) marker_label, field, rectangular cartesian, string, #Components=1
+2) marker_name, field, rectangular cartesian, string, #Components=1
  1. #Values=1 (value)
 Node: 1000001
  1  5.000000000000000e-01  5.000000000000000e-01  0.000000000000000e+00

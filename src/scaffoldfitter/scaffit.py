@@ -7,7 +7,7 @@ from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.result import RESULT_OK
 from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldClone, evaluateNodesetMeanCoordinates, \
-    findNodeWithLabel, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, getUniqueFieldName, ZincCacheChanges
+    findNodeWithName, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, getUniqueFieldName, ZincCacheChanges
 
 
 class Scaffit:
@@ -65,11 +65,11 @@ class Scaffit:
         Called when markerGroup exists.
         Find matching marker mesh locations for marker data points.
         Only finds matching location where there is one datapoint and one node
-        for each label in marker group.
+        for each name in marker group.
         Adds those that are found into _markerDataLocationNodesetGroup.
         """
-        markerDataGroup, markerDataCoordinates, markerDataLabel = self.getMarkerDataFields()
-        markerNodeGroup, markerLocation, markerLabel = self.getMarkerModelFields()
+        markerDataGroup, markerDataCoordinates, markerDataName = self.getMarkerDataFields()
+        markerNodeGroup, markerLocation, markerName = self.getMarkerModelFields()
         # assume marker locations are in highest dimension mesh (GRC can't yet query host mesh for markerLocation)
         mesh = self.getHighestDimensionMesh()
         datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
@@ -86,10 +86,10 @@ class Scaffit:
             datapoint = datapointIter.next()
             while datapoint.isValid():
                 fieldcache.setNode(datapoint)
-                label = markerDataLabel.evaluateString(fieldcache)
-                # if this is the only datapoint with label:
-                if label and findNodeWithLabel(markerDataGroup, markerDataLabel, label):
-                    node = findNodeWithLabel(markerNodeGroup, markerLabel, label)
+                name = markerDataName.evaluateString(fieldcache)
+                # if this is the only datapoint with name:
+                if name and findNodeWithName(markerDataGroup, markerDataName, name):
+                    node = findNodeWithName(markerNodeGroup, markerName, name)
                     if node:
                         fieldcache.setNode(node)
                         element, xi = markerLocation.evaluateMeshLocation(fieldcache, meshDimension)
@@ -114,26 +114,26 @@ class Scaffit:
     def getMarkerDataFields(self):
         """
         Only call if markerGroup exists.
-        :return: markerDataGroup, markerDataCoordinates, markerDataLabel
+        :return: markerDataGroup, markerDataCoordinates, markerDataName
         """
         datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
         markerPrefix = self._markerGroup.getName()
         markerDataGroup = self._markerGroup.getFieldNodeGroup(datapoints).getNodesetGroup()
         markerDataCoordinates = self._fieldmodule.findFieldByName(markerPrefix + "_data_coordinates")
-        markerDataLabel = self._fieldmodule.findFieldByName(markerPrefix + "_data_label")
-        return markerDataGroup, markerDataCoordinates, markerDataLabel
+        markerDataName = self._fieldmodule.findFieldByName(markerPrefix + "_data_name")
+        return markerDataGroup, markerDataCoordinates, markerDataName
 
     def getMarkerModelFields(self):
         """
         Only call if markerGroup exists.
-        :return: markerNodeGroup, markerLocation, markerLabel
+        :return: markerNodeGroup, markerLocation, markerName
         """
         nodes = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
         markerPrefix = self._markerGroup.getName()
         markerNodeGroup = self._markerGroup.getFieldNodeGroup(nodes).getNodesetGroup()
         markerLocation = self._fieldmodule.findFieldByName(markerPrefix + "_location")
-        markerLabel = self._fieldmodule.findFieldByName(markerPrefix + "_label")
-        return markerNodeGroup, markerLocation, markerLabel
+        markerName = self._fieldmodule.findFieldByName(markerPrefix + "_name")
+        return markerNodeGroup, markerLocation, markerName
 
     def clearDataProjectionNodesetGroups(self):
         with ZincCacheChanges(self._fieldmodule):

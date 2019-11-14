@@ -5,7 +5,7 @@ Fit step for gross alignment and scale.
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldEulerAnglesRotationMatrix, getNodeLabelCentres, ZincCacheChanges
+from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldEulerAnglesRotationMatrix, getNodeNameCentres, ZincCacheChanges
 from scaffoldfitter.scaffit import Scaffit, FitStep
 
 class FitStepAlign(FitStep):
@@ -117,37 +117,34 @@ class FitStepAlign(FitStep):
         modelCoordinates = self._fitter.getModelCoordinatesField()
         componentsCount = modelCoordinates.getNumberOfComponents()
 
-        nodes = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
-        markerModelGroup = markerGroup.getFieldNodeGroup(nodes).getNodesetGroup()
-        if not markerModelGroup.isValid():
+        markerNodeGroup, markerLocation, markerName = self._fitter.getMarkerModelFields()
+        if not markerNodeGroup.isValid():
             return "Align Step: No marker model group"
-        markerModelLocation = fieldmodule.findFieldByName(markerPrefix + "_location")
-        markerModelCoordinates = fieldmodule.createFieldEmbedded(modelCoordinates, markerModelLocation)
-        markerModelLabel = fieldmodule.findFieldByName(markerPrefix + "_label")
-        if not (markerModelCoordinates.isValid() and markerModelLabel.isValid()):
-            return "Align Step: No marker coordinates or label fields"
-        modelMarkers = getNodeLabelCentres(markerModelGroup, markerModelCoordinates, markerModelLabel)
+        markerModelCoordinates = fieldmodule.createFieldEmbedded(modelCoordinates, markerLocation)
+        if not (markerModelCoordinates.isValid() and markerName.isValid()):
+            return "Align Step: No marker coordinates or name fields"
+        modelMarkers = getNodeNameCentres(markerNodeGroup, markerModelCoordinates, markerName)
 
-        markerDataGroup, markerDataCoordinates, markerDataLabel = self._fitter.getMarkerDataFields()
+        markerDataGroup, markerDataCoordinates, markerDataName = self._fitter.getMarkerDataFields()
         if not markerDataGroup.isValid():
             return "Align Step: No marker data group"
-        if not (markerDataCoordinates.isValid() and markerDataLabel.isValid()):
-            return "Align Step: No marker data coordinates or label fields"
-        dataMarkers = getNodeLabelCentres(markerDataGroup, markerDataCoordinates, markerDataLabel)
+        if not (markerDataCoordinates.isValid() and markerDataName.isValid()):
+            return "Align Step: No marker data coordinates or name fields"
+        dataMarkers = getNodeNameCentres(markerDataGroup, markerDataCoordinates, markerDataName)
 
         # match model and data markers, warn of missing markers
         markerMap = {}
-        for label, modelx in modelMarkers.items():
-            datax = dataMarkers.get(label)
+        for name, modelx in modelMarkers.items():
+            datax = dataMarkers.get(name)
             if datax:
-                markerMap[label] = ( modelx, datax )
-                print('Align Step: Found marker ' + label + ' in model and data')
-        for label in modelMarkers:
-            if not markerMap.get(label):
-                print('Warning: Align Step: Model marker ' + label + ' not found in data')
-        for label in dataMarkers:
-            if not markerMap.get(label):
-                print('Warning: Align Step: Data marker ' + label + ' not found in model')
+                markerMap[name] = ( modelx, datax )
+                print('Align Step: Found marker ' + name + ' in model and data')
+        for name in modelMarkers:
+            if not markerMap.get(name):
+                print('Warning: Align Step: Model marker ' + name + ' not found in data')
+        for name in dataMarkers:
+            if not markerMap.get(name):
+                print('Warning: Align Step: Data marker ' + name + ' not found in model')
 
         return self._optimiseAlignment(markerMap)
 
@@ -155,7 +152,7 @@ class FitStepAlign(FitStep):
         """
         Calculate transformation from modelCoordinates to dataMarkers
         over the markers, by translating and rotating data, and scaling model.
-        :param markerMap: dict label -> (modelCoordinates, dataCoordinates)
+        :param markerMap: dict name -> (modelCoordinates, dataCoordinates)
         :return: None on success otherwise errorString. On success,
         sets transformation parameters in object.
         """
@@ -186,7 +183,7 @@ class FitStepAlign(FitStep):
             nodetemplate.defineField(dataCoordinates)
             fieldcache = fieldmodule.createFieldcache()
             result = RESULT_OK
-            for label, positions in markerMap.items():
+            for name, positions in markerMap.items():
                 modelx = positions[0]
                 datax = positions[1]
                 node = nodes.createNode(-1, nodetemplate)
