@@ -58,7 +58,7 @@ class Scaffit:
 
     def _addFitStep(self, fitStep):
         self._fitSteps.append(fitStep)
-        print('_addFitStep type', fitStep.getTypeId())
+        #print('_addFitStep type', fitStep.getTypeId())
 
     def _calculateMarkerDataLocations(self):
         """
@@ -246,7 +246,13 @@ class FitStep:
 
     @classmethod
     def getTypeId(cls):
-        return 'FitStep'
+        return "FitStep"
 
     def hasRun(self):
         return self._hasRun
+
+    def run(self):
+        """
+        Override to perform action of derived FitStep
+        """
+        pass

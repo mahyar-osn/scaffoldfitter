@@ -9,14 +9,6 @@ from scaffoldfitter.utils.zinc_utils import ZincCacheChanges
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-def createScaffitForCubeToSphere(dataFileName):
-    zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
-    zinc_data_file = os.path.join(here, "resources", dataFileName)
-    scaffit = Scaffit(zinc_model_file, zinc_data_file)
-    scaffit.setModelCoordinatesFieldByName("coordinates")
-    scaffit.setDataCoordinatesFieldByName("data_coordinates")
-    return scaffit
-
 def assertAlmostEqualList(testcase, actualList, expectedList, delta):
     assert len(actualList) == len(expectedList)
     for actual, expected in zip(actualList, expectedList):
@@ -68,6 +60,14 @@ def transformCoordinatesList(xIn : list, transformationMatrix, translation):
         xOut.append(x2)
     return xOut
 
+def createScaffitForCubeToSphere(dataFileName):
+    zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
+    zinc_data_file = os.path.join(here, "resources", dataFileName)
+    scaffit = Scaffit(zinc_model_file, zinc_data_file)
+    scaffit.setModelCoordinatesFieldByName("coordinates")
+    scaffit.setDataCoordinatesFieldByName("data_coordinates")
+    return scaffit
+
 class FitCubeToSphereTestCase(unittest.TestCase):
 
     def test_alignFixedRandomData(self):
@@ -86,8 +86,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         align.setTranslation([ 0.1, -0.2, 0.3 ])
         align.setRotation([ math.pi/4.0, math.pi/8.0, math.pi/2.0 ])
         align.setAlignMarkers(False)
-        errorString = align.run()
-        self.assertIsNone(errorString, errorString)
+        align.run()
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
@@ -127,8 +126,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
 
         align = FitStepAlign(scaffit)
         align.setAlignMarkers(True)
-        errorString = align.run()
-        self.assertIsNone(errorString, errorString)
+        align.run()
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
@@ -144,7 +142,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
 
         fitGeometry0 = FitStepFitGeometry(scaffit)
         fitGeometry0.setNumberOfIterations(0)
-        errorString = fitGeometry0.run()
+        fitGeometry0.run()
         scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
 
         fitGeometry1 = FitStepFitGeometry(scaffit)
@@ -152,8 +150,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         fitGeometry1.setCurvaturePenaltyWeight(0.1)
         fitGeometry1.setNumberOfIterations(3)
         fitGeometry1.setUpdateReferenceCoordinates(True)
-        errorString = fitGeometry1.run()
-        self.assertIsNone(errorString, errorString)
+        fitGeometry1.run()
         scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
 
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)

@@ -66,12 +66,9 @@ class FitStepAlign(FitStep):
         Perform align and scale.
         """
         modelCoordinates = self._fitter.getModelCoordinatesField()
-        if not modelCoordinates:
-            return "Align Step failed: model coordinates field not specified"
+        assert modelCoordinates, "Align:  Missing model coordinates"
         if self._alignMarkers:
-            errorString = self._doAlignMarkers()
-            if errorString:
-                return errorString
+            self._doAlignMarkers()
         fieldmodule = self._fitter._fieldmodule
         with ZincCacheChanges(fieldmodule):
             # rotate, scale and translate model
@@ -79,38 +76,31 @@ class FitStepAlign(FitStep):
                 modelCoordinates, self._rotation, self._scale, self._translation)[0]
             fieldassignment = self._fitter._modelCoordinatesField.createFieldassignment(modelCoordinatesTransformed)
             result = fieldassignment.assign()
-            if result not in [ RESULT_OK, RESULT_WARNING_PART_DONE ]:
-                return "Align Step: Failed to transform model"
+            assert result in [ RESULT_OK, RESULT_WARNING_PART_DONE ], "Align:  Failed to transform model"
             self._fitter.updateModelReferenceCoordinates()
             del fieldassignment
             del modelCoordinatesTransformed
-        return None
 
     def _doAlignMarkers(self):
         """
-        :return: None on success otherwise error string.
+        Prepare and invoke alignment to markers.
         """
         fieldmodule = self._fitter._fieldmodule
         markerGroup = self._fitter.getMarkerGroup()
-        if not markerGroup.isValid():
-            return "Align Step: No marker group to align with"
+        assert markerGroup.isValid(), "Align:  No marker group to align with"
         markerPrefix = markerGroup.getName()
         modelCoordinates = self._fitter.getModelCoordinatesField()
         componentsCount = modelCoordinates.getNumberOfComponents()
 
         markerNodeGroup, markerLocation, markerName = self._fitter.getMarkerModelFields()
-        if not markerNodeGroup.isValid():
-            return "Align Step: No marker model group"
+        assert markerNodeGroup.isValid(), "Align:  No marker model group"
         markerModelCoordinates = fieldmodule.createFieldEmbedded(modelCoordinates, markerLocation)
-        if not (markerModelCoordinates.isValid() and markerName.isValid()):
-            return "Align Step: No marker coordinates or name fields"
+        assert (markerModelCoordinates.isValid() and markerName.isValid()), "Align:  No marker coordinates or name fields"
         modelMarkers = getNodeNameCentres(markerNodeGroup, markerModelCoordinates, markerName)
 
         markerDataGroup, markerDataCoordinates, markerDataName = self._fitter.getMarkerDataFields()
-        if not markerDataGroup.isValid():
-            return "Align Step: No marker data group"
-        if not (markerDataCoordinates.isValid() and markerDataName.isValid()):
-            return "Align Step: No marker data coordinates or name fields"
+        assert markerDataGroup.isValid(), "Align:  No marker data group"
+        assert markerDataCoordinates.isValid() and markerDataName.isValid(), "Align:  No marker data coordinates or name fields"
         dataMarkers = getNodeNameCentres(markerDataGroup, markerDataCoordinates, markerDataName)
 
         # match model and data markers, warn of missing markers
@@ -119,30 +109,26 @@ class FitStepAlign(FitStep):
             datax = dataMarkers.get(name)
             if datax:
                 markerMap[name] = ( modelx, datax )
-                print('Align Step: Found marker ' + name + ' in model and data')
+                print("Information Align: Found marker " + name + " in model and data")
         for name in modelMarkers:
             if not markerMap.get(name):
-                print('Warning: Align Step: Model marker ' + name + ' not found in data')
+                print("Warning: Align:  Model marker " + name + " not found in data")
         for name in dataMarkers:
             if not markerMap.get(name):
-                print('Warning: Align Step: Data marker ' + name + ' not found in model')
+                print("Warning: Align:  Data marker " + name + " not found in model")
 
-        return self._optimiseAlignment(markerMap)
+        self._optimiseAlignment(markerMap)
 
     def _optimiseAlignment(self, markerMap):
         """
         Calculate transformation from modelCoordinates to dataMarkers
         over the markers, by scaling, translating and rotating model.
+        On success, sets transformation parameters in object.
         :param markerMap: dict name -> (modelCoordinates, dataCoordinates)
-        :return: None on success otherwise errorString. On success,
-        sets transformation parameters in object.
         """
-        if len(markerMap) < 3:
-            return "Align Step: Only " + str(len(markerMap)) + " markers - need at least 3"
-
+        assert len(markerMap) >= 3, "Align:  Only " + str(len(markerMap)) + " markers - need at least 3"
         region = self._fitter._context.createRegion()
         fieldmodule = region.getFieldmodule()
-        result = RESULT_OK
         with ZincCacheChanges(fieldmodule):
             modelCoordinates = fieldmodule.createFieldFiniteElement(3)
             dataCoordinates = fieldmodule.createFieldFiniteElement(3)
@@ -156,22 +142,17 @@ class FitStepAlign(FitStep):
                 datax = positions[1]
                 node = nodes.createNode(-1, nodetemplate)
                 fieldcache.setNode(node)
-                result = modelCoordinates.assignReal(fieldcache, positions[0])
-                if result != RESULT_OK:
-                    break
-                result = dataCoordinates.assignReal(fieldcache, positions[1])
-                if result != RESULT_OK:
-                    break
+                result1 = modelCoordinates.assignReal(fieldcache, positions[0])
+                result2 = dataCoordinates.assignReal(fieldcache, positions[1])
+                assert (result1 == RESULT_OK) and (result2 == RESULT_OK), "Align:  Failed to set up data for alignment to markers optimisation"
             del fieldcache
             modelCoordinatesTransformed, rotation, scale, translation = createTransformationFields(modelCoordinates)
             # create objective = sum of squares of vector from modelCoordinatesTransformed to dataCoordinates
             markerDiff = fieldmodule.createFieldSubtract(dataCoordinates, modelCoordinatesTransformed)
             objective = fieldmodule.createFieldNodesetSumSquares(markerDiff, nodes)
+            assert objective.isValid(), "Align:  Failed to set up objective function for alignment to markers optimisation"
 
-        if result != RESULT_OK:
-            return "Align Step: Align markers optimisation set up failed."
-
-        # future: prefit to avoid gimbal lock
+        # future: pre-fit to avoid gimbal lock
 
         optimisation = fieldmodule.createOptimisation()
         optimisation.setMethod(Optimisation.METHOD_LEAST_SQUARES_QUASI_NEWTON)
@@ -182,15 +163,12 @@ class FitStepAlign(FitStep):
 
         result = optimisation.optimise()
         solutionReport = optimisation.getSolutionReport()
-        print('Align result', result)
+        print("Align result", result)
         print(solutionReport)
-        if result != RESULT_OK:
-            return "Align Step. Align markers optimisation failed"
+        assert result == RESULT_OK, "Align:  Alignment to markers optimisation failed"
 
         fieldcache = fieldmodule.createFieldcache()
         result1, self._rotation = rotation.evaluateReal(fieldcache, 3)
         result2, self._scale = scale.evaluateReal(fieldcache, 1)
         result3, self._translation = translation.evaluateReal(fieldcache, 3)
-        if (result1 != RESULT_OK) or (result2 != RESULT_OK) or (result3 != RESULT_OK):
-            return "Align Step. Align markers failed to evaluate transformation"
-        return None
+        assert (result1 == RESULT_OK) and (result2 == RESULT_OK) and (result3 == RESULT_OK), "Align:  Failed to evaluate transformation for alignment to markers"

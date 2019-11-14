@@ -66,7 +66,7 @@ class FitStepFitGeometry(FitStep):
 
     def run(self):
         """
-        :return: None on success otherwise error string.
+        Fit model geometry parameters to data.
         """
         self._calculateDataProjections()  # Must do first so objectives can be defined
         fieldmodule = self._fitter._region.getFieldmodule()
@@ -85,27 +85,23 @@ class FitStepFitGeometry(FitStep):
                 dataProjectionObjective[dimension - 1] = self.createDataProjectionObjectiveField(dimension)
                 dataProjectionObjectiveComponentsCount[dimension - 1] = dataProjectionObjective[dimension - 1].getNumberOfComponents()
                 result = optimisation.addObjectiveField(dataProjectionObjective[dimension - 1])
-                if result != RESULT_OK:
-                    return "FitStepFitGeometry: Could not add data projection objective field for dimension " + str(dimension)
+                assert result == RESULT_OK, "Fit Geometry:  Could not add data projection objective field for dimension " + str(dimension)
         if self._fitter.getMarkerGroup() and (self._fitter.getMarkerDataLocationNodesetGroup().getSize() > 0) and (self._markerWeight > 0.0):
             markerObjectiveField = self.createMarkerObjectiveField(self._markerWeight)
             result = optimisation.addObjectiveField(markerObjectiveField)
-            if result != RESULT_OK:
-                return "FitStepFitGeometry: Could not add marker objective field"
+            assert result == RESULT_OK, "Fit Geometry:  Could not add marker objective field"
         if (self._strainPenaltyWeight > 0.0) or (self._curvaturePenaltyWeight > 0.0):
             deformationPenaltyObjective = self.createDeformationPenaltyObjectiveField()
             result = optimisation.addObjectiveField(deformationPenaltyObjective)
-            if result != RESULT_OK:
-                return "FitStepFitGeometry: Could not add strain/curvature penalty objective field"
+            assert result == RESULT_OK, "Fit Geometry:  Could not add strain/curvature penalty objective field"
         if self._edgeDiscontinuityPenaltyWeight > 0.0:
             edgeDiscontinuityPenaltyObjective = self.createEdgeDiscontinuityPenaltyObjectiveField()
             result = optimisation.addObjectiveField(edgeDiscontinuityPenaltyObjective)
-            if result != RESULT_OK:
-                return "FitStepFitGeometry: Could not add edge discontinuity penalty objective field"
+            assert result == RESULT_OK, "Fit Geometry:  Could not add edge discontinuity penalty objective field"
 
         fieldcache = fieldmodule.createFieldcache()
         for iter in range(self._numberOfIterations):
-            print("Iteration", iter + 1)
+            print("-------- Iteration", iter + 1)
             for d in range(2):
                 if dataProjectionObjective[d]:
                     result, objective = dataProjectionObjective[d].evaluateReal(fieldcache, dataProjectionObjectiveComponentsCount[d])
@@ -114,11 +110,11 @@ class FitStepFitGeometry(FitStep):
                 print("    " + str(d + 1) + "-D data projection objective", objective)
             result = optimisation.optimise()
             solutionReport = optimisation.getSolutionReport()
-            print('FitGeometry result', result)
+            print("FitGeometry result", result)
             #print(solutionReport)
-            if result != RESULT_OK:
-                return "FitGeometry Step: Optimisation failed with result " + str(result)
+            assert result == RESULT_OK, "Fit Geometry:  Optimisation failed with result " + str(result)
             self._calculateDataProjections()
+        print("--------")
 
         for d in range(2):
             if dataProjectionObjective[d]:
