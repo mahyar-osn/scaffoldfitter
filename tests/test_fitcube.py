@@ -75,6 +75,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         Test alignment of model and data to known transformations.
         """
         scaffit = createScaffitForCubeToSphere("cube_to_sphere_data_random.exf")
+        scaffit.setDiagnosticLevel(1)
         bottomCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
         sidesCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
         topCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
@@ -106,6 +107,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         Test automatic alignment of model and data using fiducial markers.
         """
         scaffit = createScaffitForCubeToSphere("cube_to_sphere_data_regular.exf")
+        scaffit.setDiagnosticLevel(1)
 
         scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry0.exf"))
         coordinates = scaffit.getModelCoordinatesField()

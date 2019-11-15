@@ -101,27 +101,27 @@ class FitStepFitGeometry(FitStep):
 
         fieldcache = fieldmodule.createFieldcache()
         for iter in range(self._numberOfIterations):
-            print("-------- Iteration", iter + 1)
+            if self.getDiagnosticLevel() > 0:
+                print("-------- Iteration", iter + 1)
             for d in range(2):
                 if dataProjectionObjective[d]:
                     result, objective = dataProjectionObjective[d].evaluateReal(fieldcache, dataProjectionObjectiveComponentsCount[d])
-                else:
-                    objective = "NOT DEFINED"
-                print("    " + str(d + 1) + "-D data projection objective", objective)
+                    if self.getDiagnosticLevel() > 0:
+                        print("    " + str(d + 1) + "-D data projection objective", objective)
             result = optimisation.optimise()
-            solutionReport = optimisation.getSolutionReport()
-            print("FitGeometry result", result)
-            #print(solutionReport)
+            if self.getDiagnosticLevel() > 1:
+                solutionReport = optimisation.getSolutionReport()
+                print(solutionReport)
             assert result == RESULT_OK, "Fit Geometry:  Optimisation failed with result " + str(result)
             self._calculateDataProjections()
-        print("--------")
+        if self.getDiagnosticLevel() > 0:
+            print("--------")
 
         for d in range(2):
             if dataProjectionObjective[d]:
                 result, objective = dataProjectionObjective[d].evaluateReal(fieldcache, dataProjectionObjectiveComponentsCount[d])
-            else:
-                objective = "NOT DEFINED"
-            print("END " + str(d + 1) + "-D data projection objective", objective)
+                if self.getDiagnosticLevel() > 0:
+                    print("END " + str(d + 1) + "-D data projection objective", objective)
 
         if self._updateReferenceCoordinates:
             self._fitter.updateModelReferenceCoordinates()
@@ -160,7 +160,8 @@ class FitStepFitGeometry(FitStep):
                         if meshGroup.isValid() and (meshGroup.getSize() > 0):
                             break
                     else:
-                        print("Warning: Cannot project data for group " + groupName + " as no matching mesh group")
+                        if self.getDiagnosticLevel() > 0:
+                            print("Fit Geometry:  Warning: Cannot project data for group " + groupName + " as no matching mesh group")
                         continue
                     meshLocation = self._fitter.getDataProjectionMeshLocationField(dimension)
                     dataProjectionNodesetGroup = self._fitter.getDataProjectionNodesetGroup(dimension)
@@ -168,7 +169,8 @@ class FitStepFitGeometry(FitStep):
                     node = nodeIter.next()
                     fieldcache.setNode(node)
                     if not dataCoordinates.isDefinedAtLocation(fieldcache):
-                        print("Cannot project data for group " + groupName + " as field " + dataCoordinates.getName() + " is not defined on data")
+                        if self.getDiagnosticLevel() > 0:
+                            print("Fit Geometry:  Warning: Cannot project data for group " + groupName + " as field " + dataCoordinates.getName() + " is not defined on data")
                         continue
                     if not meshLocation.isDefinedAtLocation(fieldcache):
                         # define meshLocation and on data Group:
@@ -188,12 +190,10 @@ class FitStepFitGeometry(FitStep):
                         fieldcache.setNode(node)
                         element, xi = findMeshLocation.evaluateMeshLocation(fieldcache, dimension)
                         if not element.isValid():
-                            print("Error finding data projection nearest mesh location for group " + groupName)
+                            print("Fit Geometry:  Error finding data projection nearest mesh location for group " + groupName + ". Aborting group.")
                             break
                         result = meshLocation.assignMeshLocation(fieldcache, element, xi)
-                        if result != RESULT_OK:
-                            print("Error assigning data projection mesh location for group " + groupName)
-                            break
+                        assert result == RESULT_OK, "Fit Geometry:  Failed to assign data projection mesh location for group " + groupName
                         dataProjectionNodesetGroup.addNode(node)
                         node = nodeIter.next()
 
@@ -207,21 +207,22 @@ class FitStepFitGeometry(FitStep):
                             dataCoordinates)))
                     fieldassignment.setNodeset(nodesetGroup)
                     result = fieldassignment.assign()
-                    if result not in [ RESULT_OK, RESULT_WARNING_PART_DONE ]:
-                        print("FitStepFitGeometry: Failed to assign data projection directions for dimension " + str(dimension))
+                    assert result in [ RESULT_OK, RESULT_WARNING_PART_DONE ], \
+                        "Fit Geometry:  Failed to assign data projection directions for dimension " + str(dimension)
 
-            # Warn about unprojected points
-            unprojectedDatapoints = fieldmodule.createFieldNodeGroup(datapoints).getNodesetGroup()
-            unprojectedDatapoints.addNodesConditional(fieldmodule.createFieldIsDefined(dataCoordinates))
-            for d in range(2):
-                unprojectedDatapoints.removeNodesConditional(self._fitter.getDataProjectionNodeGroupField(d + 1))
-            unprojectedCount = unprojectedDatapoints.getSize()
-            if unprojectedCount > 0:
-                print("Warning: " + str(unprojected) + " data points with data coordinates have not been projected")
+            if self.getDiagnosticLevel() > 0:
+                # Warn about unprojected points
+                unprojectedDatapoints = fieldmodule.createFieldNodeGroup(datapoints).getNodesetGroup()
+                unprojectedDatapoints.addNodesConditional(fieldmodule.createFieldIsDefined(dataCoordinates))
+                for d in range(2):
+                    unprojectedDatapoints.removeNodesConditional(self._fitter.getDataProjectionNodeGroupField(d + 1))
+                unprojectedCount = unprojectedDatapoints.getSize()
+                if unprojectedCount > 0:
+                    print("Warning: " + str(unprojected) + " data points with data coordinates have not been projected")
+                del unprojectedDatapoints
 
             # remove temporary objects before clean up ZincCacheChanges
             del findMeshLocation
-            del unprojectedDatapoints
             del fieldcache
             del fielditer
 

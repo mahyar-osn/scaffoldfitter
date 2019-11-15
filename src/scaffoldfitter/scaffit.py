@@ -30,6 +30,7 @@ class Scaffit:
         self._markerDataLocationField = None
         self._markerDataLocationNodeGroupField = None
         self._markerDataLocationNodesetGroup = None
+        self._diagnosticLevel = 0
         self._fitSteps = []
         self._loadModel()
 
@@ -58,7 +59,6 @@ class Scaffit:
 
     def _addFitStep(self, fitStep):
         self._fitSteps.append(fitStep)
-        #print('_addFitStep type', fitStep.getTypeId())
 
     def _calculateMarkerDataLocations(self):
         """
@@ -103,10 +103,11 @@ class Scaffit:
         markerDataGroupSize = markerDataGroup.getSize()
         markerDataLocationGroupSize = self._markerDataLocationNodesetGroup.getSize()
         markerNodeGroupSize = markerNodeGroup.getSize()
-        if markerDataLocationGroupSize < markerDataGroupSize:
-            print("Warning: Only " + str(markerDataLocationGroupSize) + " of " + str(markerDataGroupSize) + " marker data points have model locations")
-        if markerDataLocationGroupSize < markerNodeGroupSize:
-            print("Warning: Only " + str(markerDataLocationGroupSize) + " of " + str(markerNodeGroupSize) + " marker model locations used")
+        if self.getDiagnosticLevel() > 0:
+            if markerDataLocationGroupSize < markerDataGroupSize:
+                print("Warning: Only " + str(markerDataLocationGroupSize) + " of " + str(markerDataGroupSize) + " marker data points have model locations")
+            if markerDataLocationGroupSize < markerNodeGroupSize:
+                print("Warning: Only " + str(markerDataLocationGroupSize) + " of " + str(markerNodeGroupSize) + " marker model locations used")
 
     def getMarkerGroup(self):
         return self._markerGroup
@@ -218,6 +219,16 @@ class Scaffit:
         modelCoordinatesField = self._fieldmodule.findFieldByName(modelCoordinatesFieldName).castFiniteElement()
         self.setModelCoordinatesField(modelCoordinatesField)
 
+    def getDiagnosticLevel(self):
+        return self._diagnosticLevel
+
+    def setDiagnosticLevel(self, diagnosticLevel):
+        """
+        :param diagnosticLevel: 0 = no diagnostic messages. 1 = Information and warning messages. 2 = Also optimisation reports.
+        """
+        assert diagnosticLevel >= 0
+        self._diagnosticLevel = diagnosticLevel
+
     def updateModelReferenceCoordinates(self):
         assignFieldParameters(self._modelReferenceCoordinatesField, self._modelCoordinatesField)
 
@@ -250,6 +261,9 @@ class FitStep:
 
     def hasRun(self):
         return self._hasRun
+
+    def getDiagnosticLevel(self):
+        return self._fitter.getDiagnosticLevel()
 
     def run(self):
         """

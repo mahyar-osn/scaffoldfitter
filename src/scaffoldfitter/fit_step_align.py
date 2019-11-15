@@ -109,13 +109,17 @@ class FitStepAlign(FitStep):
             datax = dataMarkers.get(name)
             if datax:
                 markerMap[name] = ( modelx, datax )
-                print("Information Align: Found marker " + name + " in model and data")
-        for name in modelMarkers:
-            if not markerMap.get(name):
-                print("Warning: Align:  Model marker " + name + " not found in data")
-        for name in dataMarkers:
-            if not markerMap.get(name):
-                print("Warning: Align:  Data marker " + name + " not found in model")
+        if self.getDiagnosticLevel() > 0:
+            for name in modelMarkers:
+                datax = dataMarkers.get(name)
+                if datax:
+                    print("Align:  Found marker " + name + " in model and data")
+            for name in modelMarkers:
+                if not markerMap.get(name):
+                    print("Align:  Model marker " + name + " not found in data")
+            for name in dataMarkers:
+                if not markerMap.get(name):
+                    print("Align:  Data marker " + name + " not found in model")
 
         self._optimiseAlignment(markerMap)
 
@@ -162,9 +166,9 @@ class FitStepAlign(FitStep):
         optimisation.addIndependentField(translation)
 
         result = optimisation.optimise()
-        solutionReport = optimisation.getSolutionReport()
-        print("Align result", result)
-        print(solutionReport)
+        if self.getDiagnosticLevel() > 1:
+            solutionReport = optimisation.getSolutionReport()
+            print(solutionReport)
         assert result == RESULT_OK, "Align:  Alignment to markers optimisation failed"
 
         fieldcache = fieldmodule.createFieldcache()
