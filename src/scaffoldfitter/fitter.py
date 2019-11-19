@@ -10,7 +10,7 @@ from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldCl
     findNodeWithName, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, getUniqueFieldName, ZincCacheChanges
 
 
-class Scaffit:
+class Fitter:
 
     def __init__(self, zincModelFileName, zincDataFileName):
         self._context = Context("Scaffoldfitter")
@@ -31,7 +31,7 @@ class Scaffit:
         self._markerDataLocationNodeGroupField = None
         self._markerDataLocationNodesetGroup = None
         self._diagnosticLevel = 0
-        self._fitSteps = []
+        self._fitterSteps = []
         self._loadModel()
 
     def _loadModel(self):
@@ -57,8 +57,8 @@ class Scaffit:
                 self._dataProjectionNodesetGroup.append(field.getNodesetGroup())
             self._dataProjectionDirectionField = getOrCreateFieldFiniteElement(self._fieldmodule, "data_projection_direction", 3, [ "x", "y", "z" ])
 
-    def _addFitStep(self, fitStep):
-        self._fitSteps.append(fitStep)
+    def _addFitterStep(self, fitterStep):
+        self._fitterSteps.append(fitterStep)
 
     def _calculateMarkerDataLocations(self):
         """
@@ -245,19 +245,16 @@ class Scaffit:
         sir.setResourceDomainTypes(sr, Field.DOMAIN_TYPE_DATAPOINTS)
         self._region.write(sir)
 
-class FitStep:
+
+class FitterStep:
     """
-    Base class for fitting steps.
+    Base class for fitter steps.
     """
 
-    def __init__(self, fitter : Scaffit):
+    def __init__(self, fitter : Fitter):
         self._fitter = fitter
-        fitter._addFitStep(self)
+        fitter._addFitterStep(self)
         self._hasRun = False
-
-    @classmethod
-    def getTypeId(cls):
-        return "FitStep"
 
     def hasRun(self):
         return self._hasRun

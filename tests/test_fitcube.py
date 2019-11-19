@@ -2,9 +2,9 @@ import math
 import os
 import unittest
 from opencmiss.zinc.result import RESULT_OK
-from scaffoldfitter.scaffit import Scaffit
-from scaffoldfitter.fit_step_align import FitStepAlign
-from scaffoldfitter.fit_step_fitgeometry import FitStepFitGeometry
+from scaffoldfitter.fitter import Fitter
+from scaffoldfitter.fitterstepalign import FitterStepAlign
+from scaffoldfitter.fitterstepfit import FitterStepFit
 from scaffoldfitter.utils.zinc_utils import ZincCacheChanges
 
 here = os.path.abspath(os.path.dirname(__file__))
@@ -60,13 +60,13 @@ def transformCoordinatesList(xIn : list, transformationMatrix, translation):
         xOut.append(x2)
     return xOut
 
-def createScaffitForCubeToSphere(dataFileName):
+def createFitterForCubeToSphere(dataFileName):
     zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
     zinc_data_file = os.path.join(here, "resources", dataFileName)
-    scaffit = Scaffit(zinc_model_file, zinc_data_file)
-    scaffit.setModelCoordinatesFieldByName("coordinates")
-    scaffit.setDataCoordinatesFieldByName("data_coordinates")
-    return scaffit
+    fitter = Fitter(zinc_model_file, zinc_data_file)
+    fitter.setModelCoordinatesFieldByName("coordinates")
+    fitter.setDataCoordinatesFieldByName("data_coordinates")
+    return fitter
 
 class FitCubeToSphereTestCase(unittest.TestCase):
 
@@ -74,15 +74,15 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         """
         Test alignment of model and data to known transformations.
         """
-        scaffit = createScaffitForCubeToSphere("cube_to_sphere_data_random.exf")
-        scaffit.setDiagnosticLevel(1)
-        bottomCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
-        sidesCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
-        topCentre1 = scaffit.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
+        fitter = createFitterForCubeToSphere("cube_to_sphere_data_random.exf")
+        fitter.setDiagnosticLevel(1)
+        bottomCentre1 = fitter.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
+        sidesCentre1 = fitter.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
+        topCentre1 = fitter.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
         assertAlmostEqualList(self, bottomCentre1, [ 0.5, 0.5, 0.0 ], delta=1.0E-7)
         assertAlmostEqualList(self, sidesCentre1, [ 0.5, 0.5, 0.5 ], delta=1.0E-7)
         assertAlmostEqualList(self, topCentre1, [ 0.5, 0.5, 1.0 ], delta=1.0E-7)
-        align = FitStepAlign(scaffit)
+        align = FitterStepAlign(fitter)
         align.setScale(1.1)
         align.setTranslation([ 0.1, -0.2, 0.3 ])
         align.setRotation([ math.pi/4.0, math.pi/8.0, math.pi/2.0 ])
@@ -95,9 +95,9 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         transformationMatrix = [ v*scale for v in rotationMatrix ]
         bottomCentre2Expected, sidesCentre2Expected, topCentre2Expected = transformCoordinatesList(
             [ bottomCentre1, sidesCentre1, topCentre1 ], transformationMatrix, translation)
-        bottomCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
-        sidesCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
-        topCentre2 = scaffit.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
+        bottomCentre2 = fitter.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
+        sidesCentre2 = fitter.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
+        topCentre2 = fitter.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
         assertAlmostEqualList(self, bottomCentre2, bottomCentre2Expected, delta=1.0E-7)
         assertAlmostEqualList(self, sidesCentre2, sidesCentre2Expected, delta=1.0E-7)
         assertAlmostEqualList(self, topCentre2, topCentre2Expected, delta=1.0E-7)
@@ -106,17 +106,17 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         """
         Test automatic alignment of model and data using fiducial markers.
         """
-        scaffit = createScaffitForCubeToSphere("cube_to_sphere_data_regular.exf")
-        scaffit.setDiagnosticLevel(1)
+        fitter = createFitterForCubeToSphere("cube_to_sphere_data_regular.exf")
+        fitter.setDiagnosticLevel(1)
 
-        scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry0.exf"))
-        coordinates = scaffit.getModelCoordinatesField()
-        fieldmodule = scaffit.getFieldmodule()
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry0.exf"))
+        coordinates = fitter.getModelCoordinatesField()
+        fieldmodule = fitter.getFieldmodule()
         with ZincCacheChanges(fieldmodule):
             one = fieldmodule.createFieldConstant(1.0)
-            surfaceAreaField = fieldmodule.createFieldMeshIntegral(one, coordinates, scaffit.getMesh(2))
+            surfaceAreaField = fieldmodule.createFieldMeshIntegral(one, coordinates, fitter.getMesh(2))
             surfaceAreaField.setNumbersOfPoints(4)
-            volumeField = fieldmodule.createFieldMeshIntegral(one, coordinates, scaffit.getMesh(3))
+            volumeField = fieldmodule.createFieldMeshIntegral(one, coordinates, fitter.getMesh(3))
             volumeField.setNumbersOfPoints(3)
         fieldcache = fieldmodule.createFieldcache()
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
@@ -126,7 +126,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertEqual(result, RESULT_OK)
         self.assertAlmostEqual(volume, 1.0, delta=1.0E-7)
 
-        align = FitStepAlign(scaffit)
+        align = FitterStepAlign(fitter)
         align.setAlignMarkers(True)
         align.run()
         rotation = align.getRotation()
@@ -142,18 +142,15 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertEqual(result, RESULT_OK)
         self.assertAlmostEqual(volume, 0.5211506471189844, delta=1.0E-6)
 
-        fitGeometry0 = FitStepFitGeometry(scaffit)
-        fitGeometry0.setNumberOfIterations(0)
-        fitGeometry0.run()
-        scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
-
-        fitGeometry1 = FitStepFitGeometry(scaffit)
-        fitGeometry1.setMarkerWeight(1.0)
-        fitGeometry1.setCurvaturePenaltyWeight(0.1)
-        fitGeometry1.setNumberOfIterations(3)
-        fitGeometry1.setUpdateReferenceCoordinates(True)
-        fitGeometry1.run()
-        scaffit.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
+        fit1 = FitterStepFit(fitter)
+        fit1._calculateDataProjections()
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
+        fit1.setMarkerWeight(1.0)
+        fit1.setCurvaturePenaltyWeight(0.1)
+        fit1.setNumberOfIterations(3)
+        fit1.setUpdateReferenceCoordinates(True)
+        fit1.run()
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
 
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)

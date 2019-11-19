@@ -7,20 +7,16 @@ from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
 from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldEulerAnglesRotationMatrix, \
     createTransformationFields, getNodeNameCentres, ZincCacheChanges
-from scaffoldfitter.scaffit import Scaffit, FitStep
+from scaffoldfitter.fitter import Fitter, FitterStep
 
-class FitStepAlign(FitStep):
+class FitterStepAlign(FitterStep):
 
-    def __init__(self, fitter : Scaffit):
-        super(FitStepAlign, self).__init__(fitter)
+    def __init__(self, fitter : Fitter):
+        super(FitterStepAlign, self).__init__(fitter)
         self._rotation = [ 0.0, 0.0, 0.0 ]
         self._scale = 1.0
         self._translation = [ 0.0, 0.0, 0.0 ]
         self._alignMarkers = False
-
-    @classmethod
-    def getTypeId(cls):
-        return "FitStepAlign"
 
     def isAlignMarkers(self):
         return self._alignMarkers

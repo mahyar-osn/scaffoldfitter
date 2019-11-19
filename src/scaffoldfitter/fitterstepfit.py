@@ -6,22 +6,18 @@ from opencmiss.zinc.field import Field, FieldFindMeshLocation
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
 from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createDisplacementGradientFields, ZincCacheChanges
-from scaffoldfitter.scaffit import Scaffit, FitStep
+from scaffoldfitter.fitter import Fitter, FitterStep
 
-class FitStepFitGeometry(FitStep):
+class FitterStepFit(FitterStep):
 
-    def __init__(self, fitter : Scaffit):
-        super(FitStepFitGeometry, self).__init__(fitter)
+    def __init__(self, fitter : Fitter):
+        super(FitterStepFit, self).__init__(fitter)
         self._markerWeight = 1.0
         self._strainPenaltyWeight = 0.0
         self._curvaturePenaltyWeight = 0.0
         self._edgeDiscontinuityPenaltyWeight = 0.0
         self._numberOfIterations = 1
         self._updateReferenceCoordinates = False
-
-    @classmethod
-    def getTypeId(cls):
-        return "FitStepFitGeometry"
 
     def getMarkerWeight(self):
         return self._markerWeight
