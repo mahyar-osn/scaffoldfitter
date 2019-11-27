@@ -41,8 +41,9 @@ class Fitter:
         assert result == RESULT_OK, "Failed to load model file" + str(self._zincModelFileName)
         result = self._region.readFile(self._zincDataFileName)
         assert result == RESULT_OK, "Failed to load data file" + str(self._zincDataFileName)
-        markerGroup = self._fieldmodule.findFieldByName("marker").castGroup()
         self._mesh = [ self._fieldmodule.findMeshByDimension(d + 1) for d in range(3) ]
+        self._discoverDefaultCoordinatesFields()
+        markerGroup = self._fieldmodule.findFieldByName("marker").castGroup()
         if markerGroup.isValid():
             self._markerGroup = markerGroup
             self._calculateMarkerDataLocations()
@@ -59,6 +60,20 @@ class Fitter:
 
     def _addFitterStep(self, fitterStep):
         self._fitterSteps.append(fitterStep)
+
+    def _removeFitterStep(self, fitterStep):
+        self._fitterSteps.remove(fitterStep)
+
+    def getNextFitterStep(self, refFitterStep):
+        """
+        Return next fitter step after refFitterStep, or before if last, otherwise None.
+        """
+        index = self._fitterSteps.index(refFitterStep) + 1
+        if index >= len(self._fitterSteps):
+            index -= 2
+        if index < 0:
+            return None
+        return self._fitterSteps[index]
 
     def _calculateMarkerDataLocations(self):
         """
@@ -162,11 +177,17 @@ class Fitter:
     def getMarkerDataLocationField(self):
         return self._markerDataLocationField
 
+    def getContext(self):
+        return self._context
+
     def getRegion(self):
         return self._region
 
     def getFieldmodule(self):
         return self._fieldmodule
+
+    def getFitterSteps(self):
+        return self._fitterSteps
 
     def getMesh(self, dimension):
         assert 1 <= dimension <= 3
@@ -219,6 +240,35 @@ class Fitter:
         modelCoordinatesField = self._fieldmodule.findFieldByName(modelCoordinatesFieldName).castFiniteElement()
         self.setModelCoordinatesField(modelCoordinatesField)
 
+    def _discoverDefaultCoordinatesFields(self):
+        """
+        Choose default modelCoordinates and dataCoordinates fields
+        """
+        fields = []
+        fielditer = self._fieldmodule.createFielditerator()
+        field = fielditer.next()
+        while field.isValid():
+            field = fielditer.next()
+            if field.isTypeCoordinate() and (field.getNumberOfComponents() == 3) and (field.castFiniteElement().isValid()):
+                fields.append(field)
+        fieldcache = self._fieldmodule.createFieldcache()
+        mesh = self.getHighestDimensionMesh()
+        element = mesh.createElementiterator().next()
+        if element.isValid():
+            fieldcache.setElement(element)
+            for field in fields:
+                if field.isDefinedAtLocation(fieldcache):
+                    self.setModelCoordinatesField(field)
+                    break
+        datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+        datapoint = datapoints.createNodeiterator().next()
+        if datapoint.isValid():
+            fieldcache.setNode(datapoint)
+            for field in fields:
+                if field.isDefinedAtLocation(fieldcache):
+                    self.setDataCoordinatesField(field)
+                    break
+
     def getDiagnosticLevel(self):
         return self._diagnosticLevel
 
@@ -252,9 +302,22 @@ class FitterStep:
     """
 
     def __init__(self, fitter : Fitter):
+        """
+        Construct and add to Fitter.
+        """
         self._fitter = fitter
         fitter._addFitterStep(self)
         self._hasRun = False
+
+    def destroy(self):
+        """
+        Remove from Fitter.
+        """
+        self._fitter._removeFitterStep(self)
+        self._fitter = None
+
+    def getFitter(self):
+        return self._fitter
 
     def hasRun(self):
         return self._hasRun

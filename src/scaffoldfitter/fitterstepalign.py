@@ -37,6 +37,7 @@ class FitterStepAlign(FitterStep):
         1 = elevation (about rotated y)
         2 = roll (about rotated x)
         """
+        assert len(rotation) == 3, "FitterStepAlign:  Invalid rotation"
         self._rotation = rotation
 
     def getScale(self):
@@ -55,6 +56,7 @@ class FitterStepAlign(FitterStep):
         """
         :param translation: [ x, y, z ].
         """
+        assert len(translation) == 3, "FitterStepAlign:  Invalid translation"
         self._translation = translation
 
     def run(self):

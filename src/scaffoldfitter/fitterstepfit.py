@@ -17,7 +17,7 @@ class FitterStepFit(FitterStep):
         self._curvaturePenaltyWeight = 0.0
         self._edgeDiscontinuityPenaltyWeight = 0.0
         self._numberOfIterations = 1
-        self._updateReferenceCoordinates = False
+        self._updateReferenceState = False
 
     def getMarkerWeight(self):
         return self._markerWeight
@@ -54,11 +54,11 @@ class FitterStepFit(FitterStep):
         assert numberOfIterations >= 0  # 0 iterations performs projections only
         self._numberOfIterations = numberOfIterations
 
-    def isUpdateReferenceCoordinates(self):
-        return self._updateReferenceCoordinates
+    def isUpdateReferenceState(self):
+        return self._updateReferenceState
 
-    def setUpdateReferenceCoordinates(self, updateReferenceCoordinates):
-        self._updateReferenceCoordinates = updateReferenceCoordinates
+    def setUpdateReferenceState(self, updateReferenceState):
+        self._updateReferenceState = updateReferenceState
 
     def run(self):
         """
@@ -119,7 +119,7 @@ class FitterStepFit(FitterStep):
                 if self.getDiagnosticLevel() > 0:
                     print("END " + str(d + 1) + "-D data projection objective", objective)
 
-        if self._updateReferenceCoordinates:
+        if self._updateReferenceState:
             self._fitter.updateModelReferenceCoordinates()
 
         return None

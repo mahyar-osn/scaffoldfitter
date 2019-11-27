@@ -148,7 +148,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         fit1.setMarkerWeight(1.0)
         fit1.setCurvaturePenaltyWeight(0.1)
         fit1.setNumberOfIterations(3)
-        fit1.setUpdateReferenceCoordinates(True)
+        fit1.setUpdateReferenceState(True)
         fit1.run()
         fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
 

@@ -324,6 +324,25 @@ def evaluateNodesetMeanCoordinates(coordinates : Field, nodeset : Nodeset):
     assert result == RESULT_OK
     return meanCoordinates
 
+def evaluateNodesetCoordinatesRange(coordinates : Field, nodeset : Nodeset):
+    """
+    :return: min, max range of coordinates field over nodes.
+    """
+    fieldmodule = nodeset.getFieldmodule()
+    componentsCount = coordinates.getNumberOfComponents()
+    with ZincCacheChanges(fieldmodule):
+        minCoordinates = fieldmodule.createFieldNodesetMinimum(coordinates, nodeset)
+        maxCoordinates = fieldmodule.createFieldNodesetMaximum(coordinates, nodeset)
+        fieldcache = fieldmodule.createFieldcache()
+        result, minX = minCoordinates.evaluateReal(fieldcache, componentsCount)
+        assert result == RESULT_OK
+        result, maxX = maxCoordinates.evaluateReal(fieldcache, componentsCount)
+        assert result == RESULT_OK
+        del minCoordinates
+        del maxCoordinates
+        del fieldcache
+    return minX, maxX
+
 def createMeshVolumeField(coordinates : Field, mesh : Mesh, numberOfPoints = 3):
     """
     :param numberOfPoints: Number of Gauss points.
@@ -347,3 +366,10 @@ def getUniqueFieldName(fieldmodule : Fieldmodule, stemName : str) -> str:
         if not field.isValid():
             return fieldName
         number += 1
+
+def FieldIsCoordinateCapable(field : Field):
+    '''
+    Conditional function returning true if the field is Finite Element
+    type with 3 components, and is managed.
+    '''
+    return field.castFiniteElement().isValid() and (field.getNumberOfComponents() == 3) and field.isManaged()
