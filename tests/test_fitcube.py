@@ -60,22 +60,19 @@ def transformCoordinatesList(xIn : list, transformationMatrix, translation):
         xOut.append(x2)
     return xOut
 
-def createFitterForCubeToSphere(dataFileName):
-    zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
-    zinc_data_file = os.path.join(here, "resources", dataFileName)
-    fitter = Fitter(zinc_model_file, zinc_data_file)
-    fitter.setModelCoordinatesFieldByName("coordinates")
-    fitter.setDataCoordinatesFieldByName("data_coordinates")
-    return fitter
-
 class FitCubeToSphereTestCase(unittest.TestCase):
 
     def test_alignFixedRandomData(self):
         """
         Test alignment of model and data to known transformations.
         """
-        fitter = createFitterForCubeToSphere("cube_to_sphere_data_random.exf")
+        zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
+        zinc_data_file = os.path.join(here, "resources", "cube_to_sphere_data_random.exf")
+        fitter = Fitter(zinc_model_file, zinc_data_file)
         fitter.setDiagnosticLevel(1)
+        self.assertEqual(fitter.getModelCoordinatesField().getName(), "coordinates")
+        self.assertEqual(fitter.getDataCoordinatesField().getName(), "data_coordinates")
+        self.assertEqual(fitter.getMarkerGroup().getName(), "marker")
         bottomCentre1 = fitter.evaluateNodeGroupMeanCoordinates("bottom", "coordinates", isData = False)
         sidesCentre1 = fitter.evaluateNodeGroupMeanCoordinates("sides", "coordinates", isData = False)
         topCentre1 = fitter.evaluateNodeGroupMeanCoordinates("top", "coordinates", isData = False)
@@ -107,11 +104,15 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         """
         Test automatic alignment of model and data using fiducial markers.
         """
-        fitter = createFitterForCubeToSphere("cube_to_sphere_data_regular.exf")
+        zinc_model_file = os.path.join(here, "resources", "cube_to_sphere.exf")
+        zinc_data_file = os.path.join(here, "resources", "cube_to_sphere_data_regular.exf")
+        fitter = Fitter(zinc_model_file, zinc_data_file)
         fitter.setDiagnosticLevel(1)
-
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
         coordinates = fitter.getModelCoordinatesField()
+        self.assertEqual(coordinates.getName(), "coordinates")
+        self.assertEqual(fitter.getDataCoordinatesField().getName(), "data_coordinates")
+        self.assertEqual(fitter.getMarkerGroup().getName(), "marker")
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
         fieldmodule = fitter.getFieldmodule()
         with ZincCacheChanges(fieldmodule):
             one = fieldmodule.createFieldConstant(1.0)
