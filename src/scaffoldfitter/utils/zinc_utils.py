@@ -1,6 +1,6 @@
-'''
+"""
 Utility functions for easing use of Zinc API.
-'''
+"""
 
 from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field
@@ -47,7 +47,7 @@ def createFieldClone(sourceField : Field, targetName : str, managed=False) -> Fi
     :param targetName: The name of the new field, assumed different from that of source.
     :return: New identically defined field with supplied name.
     """
-    assert sourceField.castFiniteElement().isValid(), 'createFieldClone. Not a Zinc finite element field'
+    assert sourceField.castFiniteElement().isValid(), "createFieldClone. Not a Zinc finite element field"
     fieldmodule = sourceField.getFieldmodule()
     with ZincCacheChanges(fieldmodule):
         field = fieldmodule.findFieldByName(targetName)
@@ -113,7 +113,7 @@ def createFieldEulerAnglesRotationMatrix(fieldmodule : Fieldmodule, eulerAngles 
     return rotationMatrix
 
 def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componentsCount=3, componentNames=None, managed=False) -> Field:
-    '''
+    """
     Finds or creates a finite element field for the specified number of real components.
     Asserts existing field is finite element type withcorrect attributes.
     :param fieldmodule:  Zinc Fieldmodule to find or create field in.
@@ -122,7 +122,7 @@ def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componen
     :param componentNames: Optional list of component names.
     :param managed: Managed state of field if created here.
     :return: Zinc Field.
-    '''
+    """
     assert (componentsCount > 0), "getOrCreateFieldFiniteElement.  Invalid componentsCount"
     assert (not componentNames) or (len(componentNames) == componentsCount), "getOrCreateRealField.  Invalid componentNames"
     field = fieldmodule.findFieldByName(fieldName)
@@ -180,7 +180,7 @@ def createDisplacementGradientFields(coordinates : Field, referenceCoordinates :
     return displacementGradient, displacementGradient2
 
 def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePrefix = "location_") -> Field:
-    '''
+    """
     Get or create a stored mesh location field for storing locations in the
     supplied mesh, used for storing data projections.
     Note can't currently verify existing field stores locations in the supplied mesh.
@@ -188,7 +188,7 @@ def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePre
     :param mesh:  Mesh to store locations in, from same fieldmodule.
     :param namePrefix:  Prefix of field name. Function appends mesh name and
     possibly a unique number.
-    '''
+    """
     baseName = name = namePrefix + mesh.getName()
     number = 1
     while True:
@@ -357,9 +357,12 @@ def createMeshVolumeField(coordinates : Field, mesh : Mesh, numberOfPoints = 3):
 
 def getUniqueFieldName(fieldmodule : Fieldmodule, stemName : str) -> str:
     """
-    Return an unique field name formed by stemName plus a number,
-    not in use by any field in fieldmodule.
+    Return a unique field name in fieldmodule either equal to stemName or
+    appending a number starting at 1 and increasing.
     """
+    field = fieldmodule.findFieldByName(stemName)
+    if not field.isValid():
+        return stemName
     number = 1
     while True:
         fieldName = stemName + str(number)
@@ -368,9 +371,15 @@ def getUniqueFieldName(fieldmodule : Fieldmodule, stemName : str) -> str:
             return fieldName
         number += 1
 
-def FieldIsCoordinateCapable(field : Field):
-    '''
-    Conditional function returning true if the field is Finite Element
+def FieldIsManagedCoordinates(field : Field):
+    """
+    Conditional function returning True if the field is Finite Element
     type with 3 components, and is managed.
-    '''
+    """
     return field.castFiniteElement().isValid() and (field.getNumberOfComponents() == 3) and field.isManaged()
+
+def FieldIsManagedGroup(field : Field):
+    """
+    Conditional function returning True if the field is a managed Group.
+    """
+    return field.castGroup().isValid() and field.isManaged()

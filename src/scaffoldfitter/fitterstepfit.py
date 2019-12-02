@@ -133,8 +133,7 @@ class FitterStepFit(FitterStep):
         """
         fieldmodule = self._fitter.getFieldmodule()
         with ZincCacheChanges(fieldmodule):
-            dataProjectionCoordinates = fieldmodule.createFieldEmbedded(self._fitter.getModelCoordinatesField(), self._fitter.getDataProjectionMeshLocationField(dimension))
-            dataProjectionDelta = dataProjectionCoordinates - self._fitter.getDataCoordinatesField()
+            dataProjectionDelta = self._fitter.getDataProjectionDeltaField(dimension)
             #dataProjectionInDirection = fieldmodule.createFieldDotProduct(dataProjectionDelta, self._fitter.getDataProjectionDirectionField())
             #dataProjectionInDirection = fieldmodule.createFieldMagnitude(dataProjectionDelta)
             dataProjectionInDirection = dataProjectionDelta
@@ -150,9 +149,7 @@ class FitterStepFit(FitterStep):
         """
         fieldmodule = self._fitter.getFieldmodule()
         with ZincCacheChanges(fieldmodule):
-            markerDataCoordinates = self._fitter.getMarkerDataFields()[1]
-            markerDataLocationCoordinates = fieldmodule.createFieldEmbedded(self._fitter.getModelCoordinatesField(), self._fitter.getMarkerDataLocationField())
-            markerDataDelta = markerDataLocationCoordinates - markerDataCoordinates
+            markerDataLocation, markerDataLocationCoordinates, markerDataDelta = self._fitter.getMarkerDataLocationFields()
             markerDataWeightedDelta = markerDataDelta*fieldmodule.createFieldConstant([ weight ]*markerDataDelta.getNumberOfComponents())
             markerDataObjective = fieldmodule.createFieldNodesetSumSquares(markerDataWeightedDelta, self._fitter.getMarkerDataLocationNodesetGroup())
         return markerDataObjective

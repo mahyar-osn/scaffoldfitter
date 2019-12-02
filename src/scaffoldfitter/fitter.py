@@ -24,9 +24,12 @@ class Fitter:
         self._dataCoordinatesField = None
         self._dataCoordinatesFieldName = None
         self._mesh = []  # [dimension - 1]
-        self._dataProjectionMeshLocationField = [ ]  # [dimension - 1]
-        self._dataProjectionNodeGroupField = []  # [dimension - 1]
-        self._dataProjectionNodesetGroup = []  # [dimension - 1]
+        self._dataProjectionLocationFields = [ ]  # [dimension - 1]
+        self._dataProjectionCoordinatesFields = [ ]  # [dimension - 1]
+        self._dataProjectionDeltaFields = [ ]  # [dimension - 1]
+        self._dataProjectionErrorFields = [ ]  # [dimension - 1]
+        self._dataProjectionNodeGroupFields = []  # [dimension - 1]
+        self._dataProjectionNodesetGroups = []  # [dimension - 1]
         self._dataProjectionDirectionField = None  # for storing original projection direction unit vector
         self._markerGroup = None
         self._markerGroupName = None
@@ -39,6 +42,7 @@ class Fitter:
         self._markerDataNameField = None
         self._markerDataLocationField = None
         self._markerDataLocationCoordinatesField = None
+        self._markerDataDeltaField = None
         self._markerDataLocationGroupField = None
         self._markerDataLocationGroup = None
         self._diagnosticLevel = 0
@@ -111,6 +115,7 @@ class Fitter:
         self._markerDataNameField = None
         self._markerDataLocationField = None
         self._markerDataLocationCoordinatesField = None
+        self._markerDataDeltaField = None
         self._markerDataLocationGroupField = None
         self._markerDataLocationGroup = None
         if not markerGroup:
@@ -169,6 +174,14 @@ class Fitter:
         """
         return self._markerDataGroup, self._markerDataCoordinatesField, self._markerDataNameField
 
+    def getMarkerDataLocationFields(self):
+        """
+        Get fields giving marker location coordinates and delta on the data points (copied from nodes).
+        Only call if markerGroup exists.
+        :return: markerDataLocation, markerDataLocationCoordinates, markerDataDelta
+        """
+        return self._markerDataLocationField, self._markerDataLocationCoordinatesField, self._markerDataDeltaField
+
     def getMarkerModelFields(self):
         """
         Only call if markerGroup exists.
@@ -186,6 +199,7 @@ class Fitter:
         """
         self._markerDataLocationField = None
         self._markerDataLocationCoordinatesField = None
+        self._markerDataDeltaField = None
         self._markerDataLocationGroupField = None
         self._markerDataLocationGroup = None
         if not (self._markerDataGroup and self._markerDataNameField and self._markerNodeGroup and self._markerLocationField and self._markerNameField):
@@ -246,8 +260,8 @@ class Fitter:
     def _updateMarkerCoordinatesField(self):
         if self._modelCoordinatesField and self._markerLocationField:
             with ZincCacheChanges(self._fieldmodule):
-                self._markerCoordinatesField = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._markerLocationField)
                 markerPrefix = self._markerGroup.getName()
+                self._markerCoordinatesField = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._markerLocationField)
                 self._markerCoordinatesField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_coordinates"))
         else:
             self._markerCoordinatesField = None
@@ -255,9 +269,11 @@ class Fitter:
     def _updateMarkerDataLocationCoordinatesField(self):
         if self._modelCoordinatesField and self._markerDataLocationField:
             with ZincCacheChanges(self._fieldmodule):
-                self._markerDataLocationCoordinatesField = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._markerDataLocationField)
                 markerPrefix = self._markerGroup.getName()
+                self._markerDataLocationCoordinatesField = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._markerDataLocationField)
                 self._markerDataLocationCoordinatesField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_data_location_coordinates"))
+                self._markerDataDeltaField = self._markerDataLocationCoordinatesField - self._markerDataCoordinatesField
+                self._markerDataDeltaField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_data_delta"))
         else:
             self._markerDataLocationCoordinatesField = None
 
@@ -313,18 +329,31 @@ class Fitter:
         self._hasRunConfig = True
 
     def _defineDataProjectionFields(self):
-        self._dataProjectionMeshLocationField = []
-        self._dataProjectionNodeGroupField = []
-        self._dataProjectionNodesetGroup = []
+        self._dataProjectionLocationFields = []
+        self._dataProjectionCoordinatesFields = []
+        self._dataProjectionDeltaFields = []
+        self._dataProjectionErrorFields = []
+        self._dataProjectionNodeGroupFields = []
+        self._dataProjectionNodesetGroups = []
         with ZincCacheChanges(self._fieldmodule):
             datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
             for d in range(2):
                 mesh = self._mesh[d]
-                self._dataProjectionMeshLocationField.append(getOrCreateFieldMeshLocation(self._fieldmodule, mesh, namePrefix = "data_projection_location_"))
+                dataProjectionLocation = getOrCreateFieldMeshLocation(self._fieldmodule, mesh, namePrefix = "data_projection_location_")
+                self._dataProjectionLocationFields.append(dataProjectionLocation)
+                dataProjectionCoordinates = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, dataProjectionLocation)
+                dataProjectionCoordinates.setName(getUniqueFieldName(self._fieldmodule, "data_projection_coordinates_" + mesh.getName()))
+                self._dataProjectionCoordinatesFields.append(dataProjectionCoordinates)
+                dataProjectionDelta = dataProjectionCoordinates - self._dataCoordinatesField
+                dataProjectionDelta.setName(getUniqueFieldName(self._fieldmodule, "data_projection_delta_" + mesh.getName()))
+                self._dataProjectionDeltaFields.append(dataProjectionDelta)
+                dataProjectionError = self._fieldmodule.createFieldMagnitude(dataProjectionDelta)
+                dataProjectionError.setName(getUniqueFieldName(self._fieldmodule, "data_projection_error_" + mesh.getName()))
+                self._dataProjectionErrorFields.append(dataProjectionError)
                 field = self._fieldmodule.createFieldNodeGroup(datapoints)
                 field.setName(getUniqueFieldName(self._fieldmodule, "data_projection_group_" + mesh.getName()))
-                self._dataProjectionNodeGroupField.append(field)
-                self._dataProjectionNodesetGroup.append(field.getNodesetGroup())
+                self._dataProjectionNodeGroupFields.append(field)
+                self._dataProjectionNodesetGroups.append(field.getNodesetGroup())
             self._dataProjectionDirectionField = getOrCreateFieldFiniteElement(self._fieldmodule, "data_projection_direction",
                 componentsCount = 3, componentNames = [ "x", "y", "z" ])
 
@@ -340,7 +369,7 @@ class Fitter:
             datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
             fieldcache = self._fieldmodule.createFieldcache()
             for d in range(2):
-                self._dataProjectionNodesetGroup[d].removeAllNodes()
+                self._dataProjectionNodesetGroups[d].removeAllNodes()
             groups = getGroupList(self._fieldmodule)
             for group in groups:
                 groupName = group.getName()
@@ -355,8 +384,8 @@ class Fitter:
                     if self.getDiagnosticLevel() > 0:
                         print("Fit Geometry:  Warning: Cannot project data for group " + groupName + " as no matching mesh group")
                     continue
-                meshLocation = self._dataProjectionMeshLocationField[dimension - 1]
-                dataProjectionNodesetGroup = self._dataProjectionNodesetGroup[dimension - 1]
+                meshLocation = self._dataProjectionLocationFields[dimension - 1]
+                dataProjectionNodesetGroup = self._dataProjectionNodesetGroups[dimension - 1]
                 nodeIter = dataGroup.createNodeiterator()
                 node = nodeIter.next()
                 fieldcache.setNode(node)
@@ -397,12 +426,10 @@ class Fitter:
 
             # Store data projection directions
             for dimension in range(1, 3):
-                nodesetGroup = self._dataProjectionNodesetGroup[dimension - 1]
+                nodesetGroup = self._dataProjectionNodesetGroups[dimension - 1]
                 if nodesetGroup.getSize() > 0:
                     fieldassignment = self._dataProjectionDirectionField.createFieldassignment(
-                        self._fieldmodule.createFieldNormalise(self._fieldmodule.createFieldSubtract(
-                            self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._dataProjectionMeshLocationField[dimension - 1]),
-                            self._dataCoordinatesField)))
+                        self._fieldmodule.createFieldNormalise(self._dataProjectionDeltaFields[dimension - 1]))
                     fieldassignment.setNodeset(nodesetGroup)
                     result = fieldassignment.assign()
                     assert result in [ RESULT_OK, RESULT_WARNING_PART_DONE ], \
@@ -413,7 +440,7 @@ class Fitter:
                 unprojectedDatapoints = self._fieldmodule.createFieldNodeGroup(datapoints).getNodesetGroup()
                 unprojectedDatapoints.addNodesConditional(self._fieldmodule.createFieldIsDefined(self._dataCoordinatesField))
                 for d in range(2):
-                    unprojectedDatapoints.removeNodesConditional(self._dataProjectionNodeGroupField[d])
+                    unprojectedDatapoints.removeNodesConditional(self._dataProjectionNodeGroupFields[d])
                 unprojectedCount = unprojectedDatapoints.getSize()
                 if unprojectedCount > 0:
                     print("Warning: " + str(unprojected) + " data points with data coordinates have not been projected")
@@ -445,15 +472,43 @@ class Fitter:
 
     def getDataProjectionNodeGroupField(self, dimension):
         assert 1 <= dimension <= 2
-        return self._dataProjectionNodeGroupField[dimension - 1]
+        return self._dataProjectionNodeGroupFields[dimension - 1]
 
     def getDataProjectionNodesetGroup(self, dimension):
         assert 1 <= dimension <= 2
-        return self._dataProjectionNodesetGroup[dimension - 1]
+        return self._dataProjectionNodesetGroups[dimension - 1]
 
-    def getDataProjectionMeshLocationField(self, dimension):
+    def getDataProjectionLocationField(self, dimension):
+        """
+        :return: Field giving element:xi location for data points on mesh of dimension.
+        """
         assert 1 <= dimension <= 2
-        return self._dataProjectionMeshLocationField[dimension - 1]
+        return self._dataProjectionLocationFields[dimension - 1]
+
+    def getDataProjectionCoordinatesField(self, dimension):
+        """
+        :return: Field giving coordinates of projections of data points on mesh of dimension.
+        """
+        assert 1 <= dimension <= 2
+        return self._dataProjectionCoordinatesFields[dimension - 1]
+
+    def getDataProjectionDeltaField(self, dimension):
+        """
+        :return: Field giving delta coordinates (projection coordinates - data coordinates)
+        for data points on mesh of dimension.
+        """
+        assert 1 <= dimension <= 2
+        return self._dataProjectionDeltaFields[dimension - 1]
+
+    def getDataProjectionErrorField(self, dimension):
+        """
+        :return: Field giving magnitude of data point delta coordinates.
+        """
+        assert 1 <= dimension <= 2
+        return self._dataProjectionErrorFields[dimension - 1]
+
+    def getMarkerDataLocationGroupField(self):
+        return self._markerDataLocationGroupField
 
     def getMarkerDataLocationNodesetGroup(self):
         return self._markerDataLocationGroup
