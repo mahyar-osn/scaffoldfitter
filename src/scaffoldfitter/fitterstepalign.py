@@ -16,7 +16,12 @@ class FitterStepAlign(FitterStep):
         self._rotation = [ 0.0, 0.0, 0.0 ]
         self._scale = 1.0
         self._translation = [ 0.0, 0.0, 0.0 ]
+        markerDataGroup, markerDataCoordinates, markerDataName = fitter.getMarkerDataFields()
+        markerNodeGroup, markerLocation, markerCoordinates, markerName = fitter.getMarkerModelFields()
         self._alignMarkers = False
+        if markerNodeGroup and markerLocation and markerCoordinates and markerName and \
+            markerDataGroup and markerDataCoordinates and markerDataName:
+            self._alignMarkers = True
 
     def isAlignMarkers(self):
         return self._alignMarkers
@@ -78,6 +83,8 @@ class FitterStepAlign(FitterStep):
             self._fitter.updateModelReferenceCoordinates()
             del fieldassignment
             del modelCoordinatesTransformed
+        self._fitter.calculateDataProjections()
+        self.setHasRun(True)
 
     def _doAlignMarkers(self):
         """
@@ -85,20 +92,17 @@ class FitterStepAlign(FitterStep):
         """
         fieldmodule = self._fitter._fieldmodule
         markerGroup = self._fitter.getMarkerGroup()
-        assert markerGroup.isValid(), "Align:  No marker group to align with"
+        assert markerGroup, "Align:  No marker group to align with"
         markerPrefix = markerGroup.getName()
         modelCoordinates = self._fitter.getModelCoordinatesField()
         componentsCount = modelCoordinates.getNumberOfComponents()
 
-        markerNodeGroup, markerLocation, markerName = self._fitter.getMarkerModelFields()
-        assert markerNodeGroup.isValid(), "Align:  No marker model group"
-        markerModelCoordinates = fieldmodule.createFieldEmbedded(modelCoordinates, markerLocation)
-        assert (markerModelCoordinates.isValid() and markerName.isValid()), "Align:  No marker coordinates or name fields"
-        modelMarkers = getNodeNameCentres(markerNodeGroup, markerModelCoordinates, markerName)
+        markerNodeGroup, markerLocation, markerCoordinates, markerName = self._fitter.getMarkerModelFields()
+        assert markerNodeGroup and markerCoordinates and markerName, "Align:  No marker group, coordinates or name fields"
+        modelMarkers = getNodeNameCentres(markerNodeGroup, markerCoordinates, markerName)
 
         markerDataGroup, markerDataCoordinates, markerDataName = self._fitter.getMarkerDataFields()
-        assert markerDataGroup.isValid(), "Align:  No marker data group"
-        assert markerDataCoordinates.isValid() and markerDataName.isValid(), "Align:  No marker data coordinates or name fields"
+        assert markerDataGroup and markerDataCoordinates and markerDataName, "Align:  No marker data group, coordinates or name fields"
         dataMarkers = getNodeNameCentres(markerDataGroup, markerDataCoordinates, markerDataName)
 
         # match model and data markers, warn of missing markers

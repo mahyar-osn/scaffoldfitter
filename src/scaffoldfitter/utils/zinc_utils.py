@@ -40,7 +40,7 @@ def assignFieldParameters(targetField : Field, sourceField : Field):
     fieldassignment = targetField.createFieldassignment(sourceField)
     fieldassignment.assign()
 
-def createFieldClone(sourceField : Field, targetName : str) -> Field:
+def createFieldClone(sourceField : Field, targetName : str, managed=False) -> Field:
     """
     Copy an existing field to a new field of supplied name.
     :param sourceField: Zinc finite element field to copy.
@@ -71,8 +71,8 @@ def createFieldClone(sourceField : Field, targetName : str) -> Field:
         result = region.read(sir)
         assert result == RESULT_OK
     # note currently must have called endChange before field can be found
-    #region.writeFile("C:\\users\\gchr006\\tmp\\km.exf")
     field = fieldmodule.findFieldByName(targetName).castFiniteElement()
+    field.setManaged(managed)
     assert field.isValid()
     return field
 
@@ -112,7 +112,7 @@ def createFieldEulerAnglesRotationMatrix(fieldmodule : Fieldmodule, eulerAngles 
         rotationMatrix = fieldmodule.createFieldConcatenate(matrixComponents)
     return rotationMatrix
 
-def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componentsCount=3, componentNames=None) -> Field:
+def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componentsCount=3, componentNames=None, managed=False) -> Field:
     '''
     Finds or creates a finite element field for the specified number of real components.
     Asserts existing field is finite element type withcorrect attributes.
@@ -120,6 +120,7 @@ def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componen
     :param fieldName:  Name of field to find or create.
     :param componentsCount: Number of components / dimension of field, from 1 to 3.
     :param componentNames: Optional list of component names.
+    :param managed: Managed state of field if created here.
     :return: Zinc Field.
     '''
     assert (componentsCount > 0), "getOrCreateFieldFiniteElement.  Invalid componentsCount"
@@ -133,7 +134,7 @@ def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componen
     with ZincCacheChanges(fieldmodule):
         field = fieldmodule.createFieldFiniteElement(componentsCount)
         field.setName(fieldName)
-        field.setManaged(True)
+        field.setManaged(managed)
         #field.setTypeCoordinate(True)
         if componentNames:
             for c in range(componentsCount):

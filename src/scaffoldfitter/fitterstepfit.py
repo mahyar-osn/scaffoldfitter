@@ -4,7 +4,7 @@ Fit step for gross alignment and scale.
 
 from opencmiss.zinc.field import Field, FieldFindMeshLocation
 from opencmiss.zinc.optimisation import Optimisation
-from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
+from opencmiss.zinc.result import RESULT_OK
 from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createDisplacementGradientFields, ZincCacheChanges
 from scaffoldfitter.fitter import Fitter, FitterStep
 
@@ -64,7 +64,6 @@ class FitterStepFit(FitterStep):
         """
         Fit model geometry parameters to data.
         """
-        self._calculateDataProjections()  # Must do first so objectives can be defined
         fieldmodule = self._fitter._region.getFieldmodule()
         optimisation = fieldmodule.createOptimisation()
         optimisation.setMethod(Optimisation.METHOD_LEAST_SQUARES_QUASI_NEWTON)
@@ -109,7 +108,7 @@ class FitterStepFit(FitterStep):
                 solutionReport = optimisation.getSolutionReport()
                 print(solutionReport)
             assert result == RESULT_OK, "Fit Geometry:  Optimisation failed with result " + str(result)
-            self._calculateDataProjections()
+            self._fitter.calculateDataProjections()
         if self.getDiagnosticLevel() > 0:
             print("--------")
 
@@ -122,106 +121,7 @@ class FitterStepFit(FitterStep):
         if self._updateReferenceState:
             self._fitter.updateModelReferenceCoordinates()
 
-        return None
-
-    def _calculateDataProjections(self):
-        """
-        Find projections of datapoints' coordinates onto model coordinates,
-        by groups i.e. from datapoints group onto matching 2-D or 1-D mesh group.
-        Calculate and store projection direction unit vector.
-        Warn about unprojected datapoints.
-        """
-        fieldmodule = self._fitter._region.getFieldmodule()
-        with ZincCacheChanges(fieldmodule):
-            dataCoordinates = self._fitter.getDataCoordinatesField()
-            modelCoordinates = self._fitter.getModelCoordinatesField()
-            dataProjectionDirection = self._fitter.getDataProjectionDirectionField()
-            findMeshLocation = None
-            #lastDimension = 0
-            datapoints = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
-            fieldcache = fieldmodule.createFieldcache()
-            self._fitter.clearDataProjectionNodesetGroups()
-            fielditer = fieldmodule.createFielditerator()
-            field = fielditer.next()
-            while field.isValid():
-                group = field.castGroup()
-                field = fielditer.next()
-                if group.isValid():
-                    groupName = group.getName()
-                    dataNodesetGroup = group.getFieldNodeGroup(datapoints).getNodesetGroup()
-                    if not dataNodesetGroup.isValid():
-                        continue
-                    for dimension in range(2, 0, -1):
-                        meshGroup = group.getFieldElementGroup(self._fitter.getMesh(dimension)).getMeshGroup()
-                        if meshGroup.isValid() and (meshGroup.getSize() > 0):
-                            break
-                    else:
-                        if self.getDiagnosticLevel() > 0:
-                            print("Fit Geometry:  Warning: Cannot project data for group " + groupName + " as no matching mesh group")
-                        continue
-                    meshLocation = self._fitter.getDataProjectionMeshLocationField(dimension)
-                    dataProjectionNodesetGroup = self._fitter.getDataProjectionNodesetGroup(dimension)
-                    nodeIter = dataNodesetGroup.createNodeiterator()
-                    node = nodeIter.next()
-                    fieldcache.setNode(node)
-                    if not dataCoordinates.isDefinedAtLocation(fieldcache):
-                        if self.getDiagnosticLevel() > 0:
-                            print("Fit Geometry:  Warning: Cannot project data for group " + groupName + " as field " + dataCoordinates.getName() + " is not defined on data")
-                        continue
-                    if not meshLocation.isDefinedAtLocation(fieldcache):
-                        # define meshLocation and on data Group:
-                        nodetemplate = datapoints.createNodetemplate()
-                        nodetemplate.defineField(meshLocation)
-                        nodetemplate.defineField(dataProjectionDirection)
-                        while node.isValid():
-                            node.merge(nodetemplate)
-                            node = nodeIter.next()
-                        del nodetemplate
-                        # restart iteration
-                        nodeIter = dataNodesetGroup.createNodeiterator()
-                        node = nodeIter.next()
-                    findMeshLocation = fieldmodule.createFieldFindMeshLocation(dataCoordinates, modelCoordinates, meshGroup)
-                    findMeshLocation.setSearchMode(FieldFindMeshLocation.SEARCH_MODE_NEAREST)
-                    while node.isValid():
-                        fieldcache.setNode(node)
-                        element, xi = findMeshLocation.evaluateMeshLocation(fieldcache, dimension)
-                        if not element.isValid():
-                            print("Fit Geometry:  Error finding data projection nearest mesh location for group " + groupName + ". Aborting group.")
-                            break
-                        result = meshLocation.assignMeshLocation(fieldcache, element, xi)
-                        assert result == RESULT_OK, "Fit Geometry:  Failed to assign data projection mesh location for group " + groupName
-                        dataProjectionNodesetGroup.addNode(node)
-                        node = nodeIter.next()
-
-            # Store data projection directions
-            for dimension in range(1, 3):
-                nodesetGroup = self._fitter.getDataProjectionNodesetGroup(dimension)
-                if nodesetGroup.getSize() > 0:
-                    fieldassignment = dataProjectionDirection.createFieldassignment(
-                        fieldmodule.createFieldNormalise(fieldmodule.createFieldSubtract(
-                            fieldmodule.createFieldEmbedded(modelCoordinates, self._fitter.getDataProjectionMeshLocationField(dimension)),
-                            dataCoordinates)))
-                    fieldassignment.setNodeset(nodesetGroup)
-                    result = fieldassignment.assign()
-                    assert result in [ RESULT_OK, RESULT_WARNING_PART_DONE ], \
-                        "Fit Geometry:  Failed to assign data projection directions for dimension " + str(dimension)
-
-            if self.getDiagnosticLevel() > 0:
-                # Warn about unprojected points
-                unprojectedDatapoints = fieldmodule.createFieldNodeGroup(datapoints).getNodesetGroup()
-                unprojectedDatapoints.addNodesConditional(fieldmodule.createFieldIsDefined(dataCoordinates))
-                for d in range(2):
-                    unprojectedDatapoints.removeNodesConditional(self._fitter.getDataProjectionNodeGroupField(d + 1))
-                unprojectedCount = unprojectedDatapoints.getSize()
-                if unprojectedCount > 0:
-                    print("Warning: " + str(unprojected) + " data points with data coordinates have not been projected")
-                del unprojectedDatapoints
-
-            # remove temporary objects before clean up ZincCacheChanges
-            del findMeshLocation
-            del fieldcache
-            del fielditer
-
+        self.setHasRun(True)
 
     def createDataProjectionObjectiveField(self, dimension):
         """

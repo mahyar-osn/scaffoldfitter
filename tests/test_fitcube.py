@@ -86,6 +86,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         align.setScale(1.1)
         align.setTranslation([ 0.1, -0.2, 0.3 ])
         align.setRotation([ math.pi/4.0, math.pi/8.0, math.pi/2.0 ])
+        self.assertTrue(align.isAlignMarkers())
         align.setAlignMarkers(False)
         align.run()
         rotation = align.getRotation()
@@ -109,7 +110,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         fitter = createFitterForCubeToSphere("cube_to_sphere_data_regular.exf")
         fitter.setDiagnosticLevel(1)
 
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry0.exf"))
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
         coordinates = fitter.getModelCoordinatesField()
         fieldmodule = fitter.getFieldmodule()
         with ZincCacheChanges(fieldmodule):
@@ -127,8 +128,10 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertAlmostEqual(volume, 1.0, delta=1.0E-7)
 
         align = FitterStepAlign(fitter)
+        self.assertTrue(align.isAlignMarkers())
         align.setAlignMarkers(True)
         align.run()
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
@@ -143,14 +146,12 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertAlmostEqual(volume, 0.5211506471189844, delta=1.0E-6)
 
         fit1 = FitterStepFit(fitter)
-        fit1._calculateDataProjections()
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
         fit1.setMarkerWeight(1.0)
         fit1.setCurvaturePenaltyWeight(0.1)
         fit1.setNumberOfIterations(3)
         fit1.setUpdateReferenceState(True)
         fit1.run()
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
+        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry3.exf"))
 
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
