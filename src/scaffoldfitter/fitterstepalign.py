@@ -11,17 +11,46 @@ from scaffoldfitter.fitter import Fitter, FitterStep
 
 class FitterStepAlign(FitterStep):
 
+    _jsonTypeId = "_FitterStepAlign"
+
     def __init__(self, fitter : Fitter):
         super(FitterStepAlign, self).__init__(fitter)
-        self._rotation = [ 0.0, 0.0, 0.0 ]
-        self._scale = 1.0
-        self._translation = [ 0.0, 0.0, 0.0 ]
-        markerDataGroup, markerDataCoordinates, markerDataName = fitter.getMarkerDataFields()
-        markerNodeGroup, markerLocation, markerCoordinates, markerName = fitter.getMarkerModelFields()
         self._alignMarkers = False
+        markerNodeGroup, markerLocation, markerCoordinates, markerName = fitter.getMarkerModelFields()
+        markerDataGroup, markerDataCoordinates, markerDataName = fitter.getMarkerDataFields()
         if markerNodeGroup and markerLocation and markerCoordinates and markerName and \
             markerDataGroup and markerDataCoordinates and markerDataName:
             self._alignMarkers = True
+        self._rotation = [ 0.0, 0.0, 0.0 ]
+        self._scale = 1.0
+        self._translation = [ 0.0, 0.0, 0.0 ]
+
+    @classmethod
+    def getJsonTypeId(cls):
+        return cls._jsonTypeId
+
+    def decodeSettingsJSONDict(self, dct : dict):
+        """
+        Decode definition of step from JSON dict.
+        """
+        assert self._jsonTypeId in dct
+        self._alignMarkers = dct["alignMarkers"]
+        self._rotation = dct["rotation"]
+        self._scale = dct["scale"]
+        self._translation = dct["translation"]
+
+    def encodeSettingsJSONDict(self) -> dict:
+        """
+        Encode definition of step in dict.
+        :return: Settings in a dict ready for passing to json.dump.
+        """
+        return {
+            self._jsonTypeId : True,
+            "alignMarkers" : self._alignMarkers,
+            "rotation" : self._rotation,
+            "scale" : self._scale,
+            "translation" : self._translation
+            }
 
     def isAlignMarkers(self):
         return self._alignMarkers

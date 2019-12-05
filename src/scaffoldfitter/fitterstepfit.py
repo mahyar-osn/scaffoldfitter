@@ -10,6 +10,8 @@ from scaffoldfitter.fitter import Fitter, FitterStep
 
 class FitterStepFit(FitterStep):
 
+    _jsonTypeId = "_FitterStepFit"
+
     def __init__(self, fitter : Fitter):
         super(FitterStepFit, self).__init__(fitter)
         self._markerWeight = 1.0
@@ -18,6 +20,37 @@ class FitterStepFit(FitterStep):
         self._edgeDiscontinuityPenaltyWeight = 0.0
         self._numberOfIterations = 1
         self._updateReferenceState = False
+
+    @classmethod
+    def getJsonTypeId(cls):
+        return cls._jsonTypeId
+
+    def decodeSettingsJSONDict(self, dct : dict):
+        """
+        Decode definition of step from JSON dict.
+        """
+        assert self._jsonTypeId in dct
+        self._markerWeight = dct["markerWeight"]
+        self._strainPenaltyWeight = dct["strainPenaltyWeight"]
+        self._curvaturePenaltyWeight = dct["curvaturePenaltyWeight"]
+        self._edgeDiscontinuityPenaltyWeight = dct["edgeDiscontinuityPenaltyWeight"]
+        self._numberOfIterations = dct["numberOfIterations"]
+        self._updateReferenceState = dct["updateReferenceState"]
+
+    def encodeSettingsJSONDict(self) -> dict:
+        """
+        Encode definition of step in dict.
+        :return: Settings in a dict ready for passing to json.dump.
+        """
+        return {
+            self._jsonTypeId : True,
+            "markerWeight" : self._markerWeight,
+            "strainPenaltyWeight" : self._strainPenaltyWeight,
+            "curvaturePenaltyWeight" : self._curvaturePenaltyWeight,
+            "edgeDiscontinuityPenaltyWeight" : self._edgeDiscontinuityPenaltyWeight,
+            "numberOfIterations" : self._numberOfIterations,
+            "updateReferenceState" : self._updateReferenceState
+            }
 
     def getMarkerWeight(self):
         return self._markerWeight

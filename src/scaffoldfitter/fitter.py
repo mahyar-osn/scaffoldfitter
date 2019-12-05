@@ -7,17 +7,22 @@ from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field, FieldFindMeshLocation, FieldGroup
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
 from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldClone, evaluateNodesetMeanCoordinates, \
-    findNodeWithName, getGroupList, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, getUniqueFieldName, ZincCacheChanges
+    findNodeWithName, getGroupList, getManagedFieldNames, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, \
+    getUniqueFieldName, ZincCacheChanges
 
 
 class Fitter:
 
-    def __init__(self, zincModelFileName, zincDataFileName):
+    def __init__(self, zincModelFileName : str, zincDataFileName : str):
+        """
+        :param zincModelFileName: Name of zinc file supplying model to fit.
+        :param zincDataFileName: Name of zinc filed supplying data to fit to.
+        """
+        self._zincModelFileName = zincModelFileName
+        self._zincDataFileName = zincDataFileName
         self._context = Context("Scaffoldfitter")
         self._region = None
         self._fieldmodule = None
-        self._zincModelFileName = zincModelFileName
-        self._zincDataFileName = zincDataFileName
         self._modelCoordinatesField = None
         self._modelCoordinatesFieldName = None
         self._modelReferenceCoordinatesField = None
@@ -47,9 +52,40 @@ class Fitter:
         self._markerDataLocationGroup = None
         self._diagnosticLevel = 0
         self._fitterSteps = []
-        self.loadModel()
 
-    def loadModel(self):
+    def decodeSettingsJSON(self, s : str, decoder):
+        """
+        Define Fitter from JSON serialisation output by encodeSettingsJSON.
+        :param s: String of JSON encoded Fitter settings.
+        :param decoder: decodeJSONFitterSteps(fitter, dct) for decodings FitterSteps.
+        """
+        self._fitterSteps.clear()
+        dct = json.loads(s, object_hook=lambda dct: decoder(self, dct))
+        self._modelCoordinatesFieldName = dct["modelCoordinatesField"]
+        self._dataCoordinatesFieldName = dct["dataCoordinatesField"]
+        self._markerGroupName = dct["markerGroup"]
+        self._diagnosticLevel = dct["diagnosticLevel"]
+        # self._fitterSteps will already be populated by decoder so don't need
+        #self._fitterSteps = dct["fitterSteps"]
+
+    def encodeSettingsJSON(self) -> str:
+        """
+        :return: String JSON encoding of Fitter settings.
+        """
+        dct = {
+            "modelCoordinatesField" : self._modelCoordinatesFieldName,
+            "dataCoordinatesField" : self._dataCoordinatesFieldName,
+            "markerGroup" : self._markerGroupName,
+            "diagnosticLevel" : self._diagnosticLevel,
+            "fitterSteps" : [ fitterStep.encodeSettingsJSONDict() for fitterStep in self._fitterSteps ]
+            }
+        return json.dumps(dct, sort_keys=False, indent=4)
+
+    def load(self):
+        """
+        Read model and data and define fit fields and data.
+        Can call again to reset fit, after parameters have changed.
+        """
         self._region = self._context.createRegion()
         self._fieldmodule = self._region.getFieldmodule()
         result = self._region.readFile(self._zincModelFileName)
@@ -252,8 +288,8 @@ class Fitter:
         self._markerLocationField = None
         self._markerNameField = None
         self._markerCoordinatesField = None
-        markerGroup = self._fieldmodule.findFieldByName(self._markerGroupName if self._markerGroupName else "marker")
-        if not markerGroup.castGroup().isValid():
+        markerGroup = self._fieldmodule.findFieldByName(self._markerGroupName if self._markerGroupName else "marker").castGroup()
+        if not markerGroup.isValid():
             markerGroup = None
         self.setMarkerGroup(markerGroup)
 
@@ -564,12 +600,16 @@ class Fitter:
     def updateModelReferenceCoordinates(self):
         assignFieldParameters(self._modelReferenceCoordinatesField, self._modelCoordinatesField)
 
-    def writeModel(self, fileName):
+    def writeModel(self, modelFileName):
+        """
+        Write model nodes and elements excluding unmanaged fields to file.
+        """
         sir = self._region.createStreaminformationRegion()
-        sr = sir.createStreamresourceFile(fileName)
-        sir.setFieldNames([ self._modelCoordinatesField.getName() ])
-        sir.setResourceDomainTypes(sr, Field.DOMAIN_TYPE_NODES)
-        self._region.write(sir)
+        srf = sir.createStreamresourceFile(modelFileName)
+        sir.setResourceFieldNames(srf, getManagedFieldNames(self._fieldmodule))
+        sir.setResourceDomainTypes(srf, Field.DOMAIN_TYPE_NODES | Field.DOMAIN_TYPE_MESH1D | Field.DOMAIN_TYPE_MESH2D | Field.DOMAIN_TYPE_MESH3D)
+        result = self._region.write(sir)
+        assert result == RESULT_OK
 
     def writeData(self, fileName):
         sir = self._region.createStreaminformationRegion()

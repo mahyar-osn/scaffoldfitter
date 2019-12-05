@@ -233,7 +233,7 @@ def createTransformationFields(coordinates : Field, rotationAngles = [ 0.0, 0.0,
 
 def getGroupList(fieldmodule):
     """
-    Get list of Zinc groups in fieldmodule.
+    Get list of Zinc groups (FieldGroup) in fieldmodule.
     """
     groups = []
     fielditer = fieldmodule.createFielditerator()
@@ -244,6 +244,19 @@ def getGroupList(fieldmodule):
             groups.append(group)
         field = fielditer.next()
     return groups
+
+def getManagedFieldNames(fieldmodule):
+    """
+    Get names of managed fields in fieldmodule.
+    """
+    fieldNames = []
+    fieldIter = fieldmodule.createFielditerator()
+    field = fieldIter.next()
+    while field.isValid():
+        if field.isManaged():
+            fieldNames.append(field.getName())
+        field = fieldIter.next()
+    return fieldNames
 
 def findNodeWithName(nodeset : Nodeset, nameField : Field, name):
     """

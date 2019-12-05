@@ -3,6 +3,7 @@ import os
 import unittest
 from opencmiss.zinc.result import RESULT_OK
 from scaffoldfitter.fitter import Fitter
+from scaffoldfitter.fitterjson import decodeJSONFitterSteps
 from scaffoldfitter.fitterstepalign import FitterStepAlign
 from scaffoldfitter.fitterstepfit import FitterStepFit
 from scaffoldfitter.utils.zinc_utils import ZincCacheChanges
@@ -70,6 +71,8 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         zinc_data_file = os.path.join(here, "resources", "cube_to_sphere_data_random.exf")
         fitter = Fitter(zinc_model_file, zinc_data_file)
         fitter.setDiagnosticLevel(1)
+        fitter.load()
+
         self.assertEqual(fitter.getModelCoordinatesField().getName(), "coordinates")
         self.assertEqual(fitter.getDataCoordinatesField().getName(), "data_coordinates")
         self.assertEqual(fitter.getMarkerGroup().getName(), "marker")
@@ -108,11 +111,12 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         zinc_data_file = os.path.join(here, "resources", "cube_to_sphere_data_regular.exf")
         fitter = Fitter(zinc_model_file, zinc_data_file)
         fitter.setDiagnosticLevel(1)
+        fitter.load()
         coordinates = fitter.getModelCoordinatesField()
         self.assertEqual(coordinates.getName(), "coordinates")
         self.assertEqual(fitter.getDataCoordinatesField().getName(), "data_coordinates")
         self.assertEqual(fitter.getMarkerGroup().getName(), "marker")
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
+        #fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
         fieldmodule = fitter.getFieldmodule()
         with ZincCacheChanges(fieldmodule):
             one = fieldmodule.createFieldConstant(1.0)
@@ -132,7 +136,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertTrue(align.isAlignMarkers())
         align.setAlignMarkers(True)
         align.run()
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
+        #fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry2.exf"))
         rotation = align.getRotation()
         scale = align.getScale()
         translation = align.getTranslation()
@@ -152,7 +156,7 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         fit1.setNumberOfIterations(3)
         fit1.setUpdateReferenceState(True)
         fit1.run()
-        fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry3.exf"))
+        #fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry3.exf"))
 
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)
@@ -161,6 +165,19 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertEqual(result, RESULT_OK)
         self.assertAlmostEqual(volume, 0.5276229458448985, delta=1.0E-4)
 
+        # test json serialisation
+        s = fitter.encodeSettingsJSON()
+        fitter2 = Fitter(zinc_model_file, zinc_data_file)
+        fitter2.decodeSettingsJSON(s, decodeJSONFitterSteps)
+        fitterSteps = fitter2.getFitterSteps()
+        self.assertEqual(2, len(fitterSteps))
+        self.assertTrue(isinstance(fitterSteps[0], FitterStepAlign))
+        self.assertTrue(isinstance(fitterSteps[1], FitterStepFit))
+        #fitter2.load()
+        #for fitterStep in fitterSteps:
+        #    fitterStep.run()
+        s2 = fitter.encodeSettingsJSON()
+        self.assertEqual(s, s2)
 
 if __name__ == "__main__":
     unittest.main()
