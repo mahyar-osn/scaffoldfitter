@@ -45,6 +45,7 @@ def createFieldClone(sourceField : Field, targetName : str, managed=False) -> Fi
     Copy an existing field to a new field of supplied name.
     :param sourceField: Zinc finite element field to copy.
     :param targetName: The name of the new field, assumed different from that of source.
+    :param managed: Managed state of field if created here.
     :return: New identically defined field with supplied name.
     """
     assert sourceField.castFiniteElement().isValid(), "createFieldClone. Not a Zinc finite element field"
@@ -112,7 +113,7 @@ def createFieldEulerAnglesRotationMatrix(fieldmodule : Fieldmodule, eulerAngles 
         rotationMatrix = fieldmodule.createFieldConcatenate(matrixComponents)
     return rotationMatrix
 
-def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componentsCount=3, componentNames=None, managed=False) -> Field:
+def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componentsCount=3, componentNames=None, managed=False, coordinateType=False) -> Field:
     """
     Finds or creates a finite element field for the specified number of real components.
     Asserts existing field is finite element type withcorrect attributes.
@@ -121,6 +122,7 @@ def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componen
     :param componentsCount: Number of components / dimension of field, from 1 to 3.
     :param componentNames: Optional list of component names.
     :param managed: Managed state of field if created here.
+    :param coordinateType: Default value of flag indicating field gives geometric coordinates.
     :return: Zinc Field.
     """
     assert (componentsCount > 0), "getOrCreateFieldFiniteElement.  Invalid componentsCount"
@@ -135,7 +137,7 @@ def getOrCreateFieldFiniteElement(fieldmodule : Fieldmodule, fieldName, componen
         field = fieldmodule.createFieldFiniteElement(componentsCount)
         field.setName(fieldName)
         field.setManaged(managed)
-        #field.setTypeCoordinate(True)
+        field.setTypeCoordinate(coordinateType)
         if componentNames:
             for c in range(componentsCount):
                 field.setComponentName(c + 1, componentNames[c])
@@ -179,7 +181,7 @@ def createDisplacementGradientFields(coordinates : Field, referenceCoordinates :
             displacementGradient2 = fieldmodule.createFieldDerivative(displacementGradient, 1)/dS1_dxi1
     return displacementGradient, displacementGradient2
 
-def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePrefix = "location_") -> Field:
+def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePrefix="location_", managed=False) -> Field:
     """
     Get or create a stored mesh location field for storing locations in the
     supplied mesh, used for storing data projections.
@@ -188,6 +190,7 @@ def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePre
     :param mesh:  Mesh to store locations in, from same fieldmodule.
     :param namePrefix:  Prefix of field name. Function appends mesh name and
     possibly a unique number.
+    :param managed: Managed state of field if created here.
     """
     baseName = name = namePrefix + mesh.getName()
     number = 1
@@ -203,7 +206,7 @@ def getOrCreateFieldMeshLocation(fieldmodule : Fieldmodule, mesh : Mesh, namePre
     with ZincCacheChanges(fieldmodule):
         meshLocationField = fieldmodule.createFieldStoredMeshLocation(mesh)
         meshLocationField.setName(name)
-        meshLocationField.setManaged(True)
+        meshLocationField.setManaged(managed)
     return meshLocationField
 
 def createTransformationFields(coordinates : Field, rotationAngles = [ 0.0, 0.0, 0.0 ], scaleValue : float = 1.0, translationOffsets = [ 0.0, 0.0, 0.0 ]):
