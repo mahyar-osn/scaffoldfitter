@@ -2,10 +2,11 @@
 Fit step for gross alignment and scale.
 """
 
+from opencmiss.utils.zinc.field import assignFieldParameters, createDisplacementGradientFields
+from opencmiss.utils.zinc.general import ZincCacheChanges
 from opencmiss.zinc.field import Field, FieldFindMeshLocation
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createDisplacementGradientFields, ZincCacheChanges
 from scaffoldfitter.fitter import Fitter, FitterStep
 
 class FitterStepFit(FitterStep):

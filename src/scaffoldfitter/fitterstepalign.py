@@ -2,11 +2,12 @@
 Fit step for gross alignment and scale.
 """
 
+from opencmiss.utils.zinc.field import assignFieldParameters, createTransformationFields
+from opencmiss.utils.zinc.finiteelement import getNodeNameCentres
+from opencmiss.utils.zinc.general import ZincCacheChanges
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldEulerAnglesRotationMatrix, \
-    createTransformationFields, getNodeNameCentres, ZincCacheChanges
 from scaffoldfitter.fitter import Fitter, FitterStep
 
 class FitterStepAlign(FitterStep):

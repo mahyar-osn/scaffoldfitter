@@ -3,12 +3,13 @@ Main class for fitting scaffolds.
 """
 
 import json
+from opencmiss.utils.zinc.field import assignFieldParameters, createFieldFiniteElementClone, getGroupList, getManagedFieldNames, \
+    getOrCreateFieldFiniteElement, getOrCreateFieldStoredMeshLocation, getUniqueFieldName, orphanFieldOfName
+from opencmiss.utils.zinc.finiteelement import evaluateNodesetMeanCoordinates, findNodeWithName
+from opencmiss.utils.zinc.general import ZincCacheChanges
 from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field, FieldFindMeshLocation, FieldGroup
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
-from scaffoldfitter.utils.zinc_utils import assignFieldParameters, createFieldClone, evaluateNodesetMeanCoordinates, \
-    findNodeWithName, getGroupList, getManagedFieldNames, getOrCreateFieldFiniteElement, getOrCreateFieldMeshLocation, \
-    getUniqueFieldName, ZincCacheChanges
 
 
 class Fitter:
@@ -248,7 +249,7 @@ class Fitter:
         meshDimension = mesh.getDimension()
         fieldcache = self._fieldmodule.createFieldcache()
         with ZincCacheChanges(self._fieldmodule):
-            self._markerDataLocationField = getOrCreateFieldMeshLocation(self._fieldmodule, mesh, markerPrefix + "_data_location_")
+            self._markerDataLocationField = getOrCreateFieldStoredMeshLocation(self._fieldmodule, mesh, name=markerPrefix + "_data_location_" + mesh.getName())
             self._markerDataLocationGroupField = self._fieldmodule.createFieldNodeGroup(datapoints)
             self._markerDataLocationGroupField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_data_location_group"))
             self._markerDataLocationGroup = self._markerDataLocationGroupField.getNodesetGroup()
@@ -324,7 +325,9 @@ class Fitter:
         assert finiteElementField.isValid() and (finiteElementField.getNumberOfComponents() == 3)
         self._modelCoordinatesField = finiteElementField
         self._modelCoordinatesFieldName = modelCoordinatesField.getName()
-        self._modelReferenceCoordinatesField = createFieldClone(self._modelCoordinatesField, "reference_" + self._modelCoordinatesField.getName())
+        modelReferenceCoordinatesFieldName = "reference_" + self._modelCoordinatesField.getName();
+        orphanFieldOfName(self._fieldmodule, modelReferenceCoordinatesFieldName);
+        self._modelReferenceCoordinatesField = createFieldFiniteElementClone(self._modelCoordinatesField, modelReferenceCoordinatesFieldName)
         self._updateMarkerCoordinatesField()
         self._updateMarkerDataLocationCoordinatesField()
 
@@ -375,7 +378,7 @@ class Fitter:
             datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
             for d in range(2):
                 mesh = self._mesh[d]
-                dataProjectionLocation = getOrCreateFieldMeshLocation(self._fieldmodule, mesh, namePrefix = "data_projection_location_")
+                dataProjectionLocation = getOrCreateFieldStoredMeshLocation(self._fieldmodule, mesh, name="data_projection_location_" + mesh.getName())
                 self._dataProjectionLocationFields.append(dataProjectionLocation)
                 dataProjectionCoordinates = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, dataProjectionLocation)
                 dataProjectionCoordinates.setName(getUniqueFieldName(self._fieldmodule, "data_projection_coordinates_" + mesh.getName()))

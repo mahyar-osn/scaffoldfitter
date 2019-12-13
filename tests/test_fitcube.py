@@ -1,12 +1,13 @@
 import math
 import os
 import unittest
+from opencmiss.utils.zinc.general import ZincCacheChanges
+from opencmiss.utils.zinc.field import createFieldMeshIntegral
 from opencmiss.zinc.result import RESULT_OK
 from scaffoldfitter.fitter import Fitter
 from scaffoldfitter.fitterjson import decodeJSONFitterSteps
 from scaffoldfitter.fitterstepalign import FitterStepAlign
 from scaffoldfitter.fitterstepfit import FitterStepFit
-from scaffoldfitter.utils.zinc_utils import ZincCacheChanges
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -118,12 +119,8 @@ class FitCubeToSphereTestCase(unittest.TestCase):
         self.assertEqual(fitter.getMarkerGroup().getName(), "marker")
         #fitter.getRegion().writeFile(os.path.join(here, "resources", "km_fitgeometry1.exf"))
         fieldmodule = fitter.getFieldmodule()
-        with ZincCacheChanges(fieldmodule):
-            one = fieldmodule.createFieldConstant(1.0)
-            surfaceAreaField = fieldmodule.createFieldMeshIntegral(one, coordinates, fitter.getMesh(2))
-            surfaceAreaField.setNumbersOfPoints(4)
-            volumeField = fieldmodule.createFieldMeshIntegral(one, coordinates, fitter.getMesh(3))
-            volumeField.setNumbersOfPoints(3)
+        surfaceAreaField = createFieldMeshIntegral(coordinates, fitter.getMesh(2), numberOfPoints=4)
+        volumeField = createFieldMeshIntegral(coordinates, fitter.getMesh(3), numberOfPoints=3)
         fieldcache = fieldmodule.createFieldcache()
         result, surfaceArea = surfaceAreaField.evaluateReal(fieldcache, 1)
         self.assertEqual(result, RESULT_OK)

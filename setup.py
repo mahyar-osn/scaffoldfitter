@@ -18,16 +18,15 @@ readme = readfile("README.rst", split=True)[3:]  # skip title
 # into the 'requirements.txt' file.
 requires = [
     # minimal requirements listing
-    #'opencmiss.utils @ https://api.github.com/repos/OpenCMISS-Bindings/opencmiss.utils/tarball/master',
-    #'scipy',
-    #'numpy',
+    "opencmiss.utils @ https://api.github.com/repos/OpenCMISS-Bindings/opencmiss.utils/tarball/master"
+    #"opencmiss.zinc"  # not yet on pypi - need manual install
 ]
 source_license = readfile("LICENSE")
 
 setup(
     name="scaffoldfitter",
     version="0.1.1",
-    description="Scaffold/model fitter using OpenCMISS-Zinc.",
+    description="Scaffold/model geometric fitting library using OpenCMISS-Zinc.",
     long_description="\n".join(readme) + source_license,
     classifiers=[
         "Development Status :: 3 - Alpha",
