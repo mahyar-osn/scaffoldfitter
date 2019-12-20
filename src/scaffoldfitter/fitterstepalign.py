@@ -2,9 +2,9 @@
 Fit step for gross alignment and scale.
 """
 
-from opencmiss.utils.zinc.field import assignFieldParameters, createTransformationFields
+from opencmiss.utils.zinc.field import assignFieldParameters, createFieldsTransformations
 from opencmiss.utils.zinc.finiteelement import getNodeNameCentres
-from opencmiss.utils.zinc.general import ZincCacheChanges
+from opencmiss.utils.zinc.general import ChangeManager
 from opencmiss.zinc.field import Field
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
@@ -103,9 +103,9 @@ class FitterStepAlign(FitterStep):
         if self._alignMarkers:
             self._doAlignMarkers()
         fieldmodule = self._fitter._fieldmodule
-        with ZincCacheChanges(fieldmodule):
+        with ChangeManager(fieldmodule):
             # rotate, scale and translate model
-            modelCoordinatesTransformed = createTransformationFields(
+            modelCoordinatesTransformed = createFieldsTransformations(
                 modelCoordinates, self._rotation, self._scale, self._translation)[0]
             fieldassignment = self._fitter._modelCoordinatesField.createFieldassignment(modelCoordinatesTransformed)
             result = fieldassignment.assign()
@@ -165,7 +165,7 @@ class FitterStepAlign(FitterStep):
         assert len(markerMap) >= 3, "Align:  Only " + str(len(markerMap)) + " markers - need at least 3"
         region = self._fitter._context.createRegion()
         fieldmodule = region.getFieldmodule()
-        with ZincCacheChanges(fieldmodule):
+        with ChangeManager(fieldmodule):
             modelCoordinates = fieldmodule.createFieldFiniteElement(3)
             dataCoordinates = fieldmodule.createFieldFiniteElement(3)
             nodes = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
@@ -182,7 +182,7 @@ class FitterStepAlign(FitterStep):
                 result2 = dataCoordinates.assignReal(fieldcache, positions[1])
                 assert (result1 == RESULT_OK) and (result2 == RESULT_OK), "Align:  Failed to set up data for alignment to markers optimisation"
             del fieldcache
-            modelCoordinatesTransformed, rotation, scale, translation = createTransformationFields(modelCoordinates)
+            modelCoordinatesTransformed, rotation, scale, translation = createFieldsTransformations(modelCoordinates)
             # create objective = sum of squares of vector from modelCoordinatesTransformed to dataCoordinates
             markerDiff = fieldmodule.createFieldSubtract(dataCoordinates, modelCoordinatesTransformed)
             objective = fieldmodule.createFieldNodesetSumSquares(markerDiff, nodes)

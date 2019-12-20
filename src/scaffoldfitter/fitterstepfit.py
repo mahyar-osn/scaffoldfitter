@@ -2,8 +2,8 @@
 Fit step for gross alignment and scale.
 """
 
-from opencmiss.utils.zinc.field import assignFieldParameters, createDisplacementGradientFields
-from opencmiss.utils.zinc.general import ZincCacheChanges
+from opencmiss.utils.zinc.field import assignFieldParameters, createFieldsDisplacementGradients
+from opencmiss.utils.zinc.general import ChangeManager
 from opencmiss.zinc.field import Field, FieldFindMeshLocation
 from opencmiss.zinc.optimisation import Optimisation
 from opencmiss.zinc.result import RESULT_OK
@@ -166,7 +166,7 @@ class FitterStepFit(FitterStep):
         :return: Zinc FieldNodesetSumSquares.
         """
         fieldmodule = self._fitter.getFieldmodule()
-        with ZincCacheChanges(fieldmodule):
+        with ChangeManager(fieldmodule):
             dataProjectionDelta = self._fitter.getDataProjectionDeltaField(dimension)
             #dataProjectionInDirection = fieldmodule.createFieldDotProduct(dataProjectionDelta, self._fitter.getDataProjectionDirectionField())
             #dataProjectionInDirection = fieldmodule.createFieldMagnitude(dataProjectionDelta)
@@ -182,7 +182,7 @@ class FitterStepFit(FitterStep):
         :return: Zinc FieldNodesetSumSquares.
         """
         fieldmodule = self._fitter.getFieldmodule()
-        with ZincCacheChanges(fieldmodule):
+        with ChangeManager(fieldmodule):
             markerDataLocation, markerDataLocationCoordinates, markerDataDelta = self._fitter.getMarkerDataLocationFields()
             markerDataWeightedDelta = markerDataDelta*fieldmodule.createFieldConstant([ weight ]*markerDataDelta.getNumberOfComponents())
             markerDataObjective = fieldmodule.createFieldNodesetSumSquares(markerDataWeightedDelta, self._fitter.getMarkerDataLocationNodesetGroup())
@@ -196,8 +196,8 @@ class FitterStepFit(FitterStep):
         numberOfGaussPoints = 3
         fieldmodule = self._fitter.getFieldmodule()
         mesh = self._fitter.getHighestDimensionMesh()
-        with ZincCacheChanges(fieldmodule):
-            displacementGradient1, displacementGradient2 = createDisplacementGradientFields(self._fitter.getModelCoordinatesField(), self._fitter.getModelReferenceCoordinatesField(), mesh)
+        with ChangeManager(fieldmodule):
+            displacementGradient1, displacementGradient2 = createFieldsDisplacementGradients(self._fitter.getModelCoordinatesField(), self._fitter.getModelReferenceCoordinatesField(), mesh)
             if self._strainPenaltyWeight > 0.0:
                 weightedDisplacementGradient1 = displacementGradient1*fieldmodule.createFieldConstant([ self._strainPenaltyWeight ]*displacementGradient1.getNumberOfComponents())
             else:
@@ -229,7 +229,7 @@ class FitterStepFit(FitterStep):
         numberOfGaussPoints = 3
         fieldmodule = self._fitter.getFieldmodule()
         lineMesh = fieldmodule.findMeshByDimension(1)
-        with ZincCacheChanges(fieldmodule):
+        with ChangeManager(fieldmodule):
             edgeDiscontinuity = fieldmodule.createFieldEdgeDiscontinuity(self._fitter.getModelCoordinatesField())
             weightedEdgeDiscontinuity = edgeDiscontinuity*fieldmodule.createFieldConstant(self._edgeDiscontinuityPenaltyWeight)
             edgeDiscontinuityPenaltyObjective = fieldmodule.createFieldMeshIntegralSquares(weightedEdgeDiscontinuity, self._fitter.getModelReferenceCoordinatesField(), lineMesh)

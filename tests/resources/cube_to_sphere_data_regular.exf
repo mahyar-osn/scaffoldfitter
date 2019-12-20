@@ -1,6 +1,6 @@
 EX Version: 2
 Region: /
-!#nodeset datapoints
+!#nodeset nodes
 Shape. Dimension=0
 #Fields=1
 1) data_coordinates, coordinate, rectangular cartesian, real, #Components=3
@@ -1159,6 +1159,7 @@ Node: 288
   6.481555104255676e-02
  -9.071839042007923e-03
   4.956691563129425e-01
+!#nodeset datapoints
 #Fields=2
 1) marker_data_coordinates, coordinate, rectangular cartesian, real, #Components=3
  x. #Values=1 (value)
@@ -1166,28 +1167,28 @@ Node: 288
  z. #Values=1 (value)
 2) marker_data_name, field, rectangular cartesian, string, #Components=1
  1. #Values=1 (value)
-Node: 1000001
+Node: 1
   0.000000000000000e+00
   0.000000000000000e+00
  -5.000000000000000e-01
  bottom
-Node: 1000002
+Node: 2
   0.000000000000000e+00
   0.000000000000000e+00
   5.000000000000000e-01
  top
-Node: 1000003
+Node: 3
  -5.000000000000000e-01
   0.000000000000000e+00
   0.000000000000000e+00
  left
-Node: 1000004
+Node: 4
   5.000000000000000e-01
   0.000000000000000e+00
   0.000000000000000e+00
  right
  Group name: bottom
-!#nodeset datapoints
+!#nodeset nodes
 Shape. Dimension=0
 #Fields=0
 Node: 1
@@ -1266,12 +1267,12 @@ Node: 94
 !#nodeset datapoints
 Shape. Dimension=0
 #Fields=0
-Node: 1000001
-Node: 1000002
-Node: 1000003
-Node: 1000004
+Node: 1
+Node: 2
+Node: 3
+Node: 4
  Group name: sides
-!#nodeset datapoints
+!#nodeset nodes
 Shape. Dimension=0
 #Fields=0
 Node: 51
@@ -1419,7 +1420,7 @@ Node: 234
 Node: 237
 Node: 238
  Group name: top
-!#nodeset datapoints
+!#nodeset nodes
 Shape. Dimension=0
 #Fields=0
 Node: 195

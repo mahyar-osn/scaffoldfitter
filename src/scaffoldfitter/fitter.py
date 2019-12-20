@@ -4,9 +4,9 @@ Main class for fitting scaffolds.
 
 import json
 from opencmiss.utils.zinc.field import assignFieldParameters, createFieldFiniteElementClone, getGroupList, getManagedFieldNames, \
-    getOrCreateFieldFiniteElement, getOrCreateFieldStoredMeshLocation, getUniqueFieldName, orphanFieldOfName
-from opencmiss.utils.zinc.finiteelement import evaluateNodesetMeanCoordinates, findNodeWithName
-from opencmiss.utils.zinc.general import ZincCacheChanges
+    findOrCreateFieldFiniteElement, findOrCreateFieldStoredMeshLocation, getUniqueFieldName, orphanFieldByName
+from opencmiss.utils.zinc.finiteelement import evaluateFieldNodesetMean, findNodeWithName, getMaximumNodeIdentifier
+from opencmiss.utils.zinc.general import ChangeManager
 from opencmiss.zinc.context import Context
 from opencmiss.zinc.field import Field, FieldFindMeshLocation, FieldGroup
 from opencmiss.zinc.result import RESULT_OK, RESULT_WARNING_PART_DONE
@@ -23,6 +23,7 @@ class Fitter:
         self._zincDataFileName = zincDataFileName
         self._context = Context("Scaffoldfitter")
         self._region = None
+        self._rawDataRegion = None
         self._fieldmodule = None
         self._modelCoordinatesField = None
         self._modelCoordinatesFieldName = None
@@ -89,16 +90,72 @@ class Fitter:
         """
         self._region = self._context.createRegion()
         self._fieldmodule = self._region.getFieldmodule()
-        result = self._region.readFile(self._zincModelFileName)
-        assert result == RESULT_OK, "Failed to load model file" + str(self._zincModelFileName)
-        result = self._region.readFile(self._zincDataFileName)
-        assert result == RESULT_OK, "Failed to load data file" + str(self._zincDataFileName)
-        self._mesh = [ self._fieldmodule.findMeshByDimension(d + 1) for d in range(3) ]
-        self._discoverModelCoordinatesField()
-        self._discoverDataCoordinatesField()
-        self._discoverMarkerGroup()
+        self._rawDataRegion = self._region.createChild("raw_data")
+        self._loadModel()
+        self._loadData()
         self._defineDataProjectionFields()
         self.calculateDataProjections()
+
+    def _loadModel(self):
+        result = self._region.readFile(self._zincModelFileName)
+        assert result == RESULT_OK, "Failed to load model file" + str(self._zincModelFileName)
+        self._mesh = [ self._fieldmodule.findMeshByDimension(d + 1) for d in range(3) ]
+        self._discoverModelCoordinatesField()
+
+    def _loadData(self):
+        """
+        Load zinc data file into self._rawDataRegion.
+        Transfer data points (and converted nodes) into self._region.
+        """
+        result = self._rawDataRegion.readFile(self._zincDataFileName)
+        assert result == RESULT_OK, "Failed to load data file " + str(self._zincDataFileName)
+        # if there both nodes and datapoints, offset datapoint identifiers to ensure different
+        fieldmodule = self._rawDataRegion.getFieldmodule()
+        nodes = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
+        if nodes.getSize() > 0:
+            datapoints = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+            if datapoints.getSize() > 0:
+                maximumDatapointIdentifier = max(0, getMaximumNodeIdentifier(datapoints))
+                maximumNodeIdentifier = max(0, getMaximumNodeIdentifier(nodes))
+                # this assumes identifiers are in low ranges and can be improved if there is a problem:
+                identifierOffset = 100000
+                while (maximumDatapointIdentifier > identifierOffset) or (maximumNodeIdentifier > identifierOffset):
+                    assert identifierOffset < 1000000000, "Invalid node and datapoint identifier ranges"
+                    identifierOffset *= 10
+                with ChangeManager(fieldmodule):
+                    while True:
+                        # logic relies on datapoints being in identifier order
+                        datapoint = datapoints.createNodeiterator().next()
+                        identifier = datapoint.getIdentifier()
+                        if identifier >= identifierOffset:
+                            break;
+                        result = datapoint.setIdentifier(identifier + identifierOffset)
+                        assert result == RESULT_OK, "Failed to offset datapoint identifier"
+            # transfer nodes as datapoints to self._region
+            sir = self._rawDataRegion.createStreaminformationRegion()
+            srm = sir.createStreamresourceMemory()
+            sir.setResourceDomainTypes(srm, Field.DOMAIN_TYPE_NODES)
+            self._rawDataRegion.write(sir)
+            result, buffer = srm.getBuffer()
+            assert result == RESULT_OK, "Failed to write nodes"
+            buffer = buffer.replace(bytes("!#nodeset nodes", "utf-8"), bytes("!#nodeset datapoints", "utf-8"))
+            sir = self._region.createStreaminformationRegion()
+            srm = sir.createStreamresourceMemoryBuffer(buffer)
+            result = self._region.read(sir)
+            assert result == RESULT_OK, "Failed to load nodes as datapoints"
+        # transfer datapoints to self._region
+        sir = self._rawDataRegion.createStreaminformationRegion()
+        srm = sir.createStreamresourceMemory()
+        sir.setResourceDomainTypes(srm, Field.DOMAIN_TYPE_DATAPOINTS)
+        self._rawDataRegion.write(sir)
+        result, buffer = srm.getBuffer()
+        assert result == RESULT_OK, "Failed to write datapoints"
+        sir = self._region.createStreaminformationRegion()
+        srm = sir.createStreamresourceMemoryBuffer(buffer)
+        result = self._region.read(sir)
+        assert result == RESULT_OK, "Failed to load datapoints"
+        self._discoverDataCoordinatesField()
+        self._discoverMarkerGroup()
 
     def getDataCoordinatesField(self):
         return self._dataCoordinatesField
@@ -248,8 +305,8 @@ class Fitter:
         datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
         meshDimension = mesh.getDimension()
         fieldcache = self._fieldmodule.createFieldcache()
-        with ZincCacheChanges(self._fieldmodule):
-            self._markerDataLocationField = getOrCreateFieldStoredMeshLocation(self._fieldmodule, mesh, name=markerPrefix + "_data_location_" + mesh.getName())
+        with ChangeManager(self._fieldmodule):
+            self._markerDataLocationField = findOrCreateFieldStoredMeshLocation(self._fieldmodule, mesh, name=markerPrefix + "_data_location_" + mesh.getName(), managed=False)
             self._markerDataLocationGroupField = self._fieldmodule.createFieldNodeGroup(datapoints)
             self._markerDataLocationGroupField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_data_location_group"))
             self._markerDataLocationGroup = self._markerDataLocationGroupField.getNodesetGroup()
@@ -296,7 +353,7 @@ class Fitter:
 
     def _updateMarkerCoordinatesField(self):
         if self._modelCoordinatesField and self._markerLocationField:
-            with ZincCacheChanges(self._fieldmodule):
+            with ChangeManager(self._fieldmodule):
                 markerPrefix = self._markerGroup.getName()
                 self._markerCoordinatesField = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._markerLocationField)
                 self._markerCoordinatesField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_coordinates"))
@@ -305,7 +362,7 @@ class Fitter:
 
     def _updateMarkerDataLocationCoordinatesField(self):
         if self._modelCoordinatesField and self._markerDataLocationField:
-            with ZincCacheChanges(self._fieldmodule):
+            with ChangeManager(self._fieldmodule):
                 markerPrefix = self._markerGroup.getName()
                 self._markerDataLocationCoordinatesField = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, self._markerDataLocationField)
                 self._markerDataLocationCoordinatesField.setName(getUniqueFieldName(self._fieldmodule, markerPrefix + "_data_location_coordinates"))
@@ -326,7 +383,7 @@ class Fitter:
         self._modelCoordinatesField = finiteElementField
         self._modelCoordinatesFieldName = modelCoordinatesField.getName()
         modelReferenceCoordinatesFieldName = "reference_" + self._modelCoordinatesField.getName();
-        orphanFieldOfName(self._fieldmodule, modelReferenceCoordinatesFieldName);
+        orphanFieldByName(self._fieldmodule, modelReferenceCoordinatesFieldName);
         self._modelReferenceCoordinatesField = createFieldFiniteElementClone(self._modelCoordinatesField, modelReferenceCoordinatesFieldName)
         self._updateMarkerCoordinatesField()
         self._updateMarkerDataLocationCoordinatesField()
@@ -374,11 +431,11 @@ class Fitter:
         self._dataProjectionErrorFields = []
         self._dataProjectionNodeGroupFields = []
         self._dataProjectionNodesetGroups = []
-        with ZincCacheChanges(self._fieldmodule):
+        with ChangeManager(self._fieldmodule):
             datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
             for d in range(2):
                 mesh = self._mesh[d]
-                dataProjectionLocation = getOrCreateFieldStoredMeshLocation(self._fieldmodule, mesh, name="data_projection_location_" + mesh.getName())
+                dataProjectionLocation = findOrCreateFieldStoredMeshLocation(self._fieldmodule, mesh, name="data_projection_location_" + mesh.getName(), managed=False)
                 self._dataProjectionLocationFields.append(dataProjectionLocation)
                 dataProjectionCoordinates = self._fieldmodule.createFieldEmbedded(self._modelCoordinatesField, dataProjectionLocation)
                 dataProjectionCoordinates.setName(getUniqueFieldName(self._fieldmodule, "data_projection_coordinates_" + mesh.getName()))
@@ -393,8 +450,8 @@ class Fitter:
                 field.setName(getUniqueFieldName(self._fieldmodule, "data_projection_group_" + mesh.getName()))
                 self._dataProjectionNodeGroupFields.append(field)
                 self._dataProjectionNodesetGroups.append(field.getNodesetGroup())
-            self._dataProjectionDirectionField = getOrCreateFieldFiniteElement(self._fieldmodule, "data_projection_direction",
-                componentsCount = 3, componentNames = [ "x", "y", "z" ])
+            self._dataProjectionDirectionField = findOrCreateFieldFiniteElement(self._fieldmodule, "data_projection_direction",
+                components_count = 3, component_names = [ "x", "y", "z" ])
 
     def calculateDataProjections(self):
         """
@@ -403,7 +460,7 @@ class Fitter:
         Calculate and store projection direction unit vector.
         """
         assert self._dataCoordinatesField and self._modelCoordinatesField
-        with ZincCacheChanges(self._fieldmodule):
+        with ChangeManager(self._fieldmodule):
             findMeshLocation = None
             datapoints = self._fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
             fieldcache = self._fieldmodule.createFieldcache()
@@ -485,7 +542,7 @@ class Fitter:
                     print("Warning: " + str(unprojected) + " data points with data coordinates have not been projected")
                 del unprojectedDatapoints
 
-            # remove temporary objects before clean up ZincCacheChanges
+            # remove temporary objects before ChangeManager exits
             del findMeshLocation
             del fieldcache
 
@@ -588,7 +645,7 @@ class Fitter:
         nodesetGroup = group.getFieldNodeGroup(nodeset).getNodesetGroup()
         assert nodesetGroup.isValid()
         coordinates = self._fieldmodule.findFieldByName(coordinatesFieldName)
-        return evaluateNodesetMeanCoordinates(coordinates, nodesetGroup)
+        return evaluateFieldNodesetMean(coordinates, nodesetGroup)
 
     def getDiagnosticLevel(self):
         return self._diagnosticLevel

@@ -1,7 +1,6 @@
 import math
 import os
 import unittest
-from opencmiss.utils.zinc.general import ZincCacheChanges
 from opencmiss.utils.zinc.field import createFieldMeshIntegral
 from opencmiss.zinc.result import RESULT_OK
 from scaffoldfitter.fitter import Fitter
