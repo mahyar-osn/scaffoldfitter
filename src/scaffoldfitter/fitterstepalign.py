@@ -135,23 +135,25 @@ class FitterStepAlign(FitterStep):
         assert markerDataGroup and markerDataCoordinates and markerDataName, "Align:  No marker data group, coordinates or name fields"
         dataMarkers = getNodeNameCentres(markerDataGroup, markerDataCoordinates, markerDataName)
 
-        # match model and data markers, warn of missing markers
+        # match model and data markers, warn of unmatched markers
         markerMap = {}
-        for name, modelx in modelMarkers.items():
-            datax = dataMarkers.get(name)
-            if datax:
-                markerMap[name] = ( modelx, datax )
-        if self.getDiagnosticLevel() > 0:
-            for name in modelMarkers:
-                datax = dataMarkers.get(name)
-                if datax:
-                    print("Align:  Found marker " + name + " in model and data")
-            for name in modelMarkers:
-                if not markerMap.get(name):
-                    print("Align:  Model marker " + name + " not found in data")
-            for name in dataMarkers:
-                if not markerMap.get(name):
-                    print("Align:  Data marker " + name + " not found in model")
+        writeDiagnostics = self.getDiagnosticLevel() > 0
+        for modelName in modelMarkers:
+            # name match allows case and whitespace differences
+            matchName = modelName.strip().casefold()
+            for dataName in dataMarkers:
+                if dataName.strip().casefold() == matchName:
+                    markerMap[modelName] = ( modelMarkers[modelName], dataMarkers[dataName] )
+                    if writeDiagnostics:
+                        print("Align:  Model marker '" + modelName + "' found in data" + (" as '" + dataName +"'" if (dataName != modelName) else ""))
+                        dataMarkers.pop(dataName)
+                    break
+            else:
+                if writeDiagnostics:
+                    print("Align:  Model marker '" + modelName + "' not found in data")
+        if writeDiagnostics:
+            for dataName in dataMarkers:
+                print("Align:  Data marker '" + dataName + "' not found in model")
 
         self._optimiseAlignment(markerMap)
 
