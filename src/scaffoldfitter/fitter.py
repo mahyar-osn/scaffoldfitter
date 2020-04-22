@@ -105,24 +105,50 @@ class Fitter:
     def _loadData(self):
         """
         Load zinc data file into self._rawDataRegion.
+        Rename data groups to exactly match model groups where they differ by case and whitespace only.
         Transfer data points (and converted nodes) into self._region.
         """
         result = self._rawDataRegion.readFile(self._zincDataFileName)
         assert result == RESULT_OK, "Failed to load data file " + str(self._zincDataFileName)
-        # if there both nodes and datapoints, offset datapoint identifiers to ensure different
         fieldmodule = self._rawDataRegion.getFieldmodule()
-        nodes = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
-        if nodes.getSize() > 0:
-            datapoints = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
-            if datapoints.getSize() > 0:
-                maximumDatapointIdentifier = max(0, getMaximumNodeIdentifier(datapoints))
-                maximumNodeIdentifier = max(0, getMaximumNodeIdentifier(nodes))
-                # this assumes identifiers are in low ranges and can be improved if there is a problem:
-                identifierOffset = 100000
-                while (maximumDatapointIdentifier > identifierOffset) or (maximumNodeIdentifier > identifierOffset):
-                    assert identifierOffset < 1000000000, "Invalid node and datapoint identifier ranges"
-                    identifierOffset *= 10
-                with ChangeManager(fieldmodule):
+        with ChangeManager(fieldmodule):
+            # rename data groups to match model
+            # future: match with annotation terms
+            modelGroupNames = [ group.getName() for group in getGroupList(self._fieldmodule) ]
+            writeDiagnostics = self.getDiagnosticLevel() > 0
+            for dataGroup in getGroupList(fieldmodule):
+                dataGroupName = dataGroup.getName()
+                compareName = dataGroupName.strip().casefold()
+                for modelGroupName in modelGroupNames:
+                    if modelGroupName == dataGroupName:
+                        if writeDiagnostics:
+                            print("Load data: Data group '" + dataGroupName + "' found in model")
+                        break
+                    elif modelGroupName.strip().casefold() == compareName:
+                        result = dataGroup.setName(modelGroupName)
+                        if result == RESULT_OK:
+                            if writeDiagnostics:
+                                print("Load data: Data group '" + dataGroupName + "' found in model as '" + modelGroupName + "'. Renaming to match.")
+                        else:
+                            print("Error: Load data: Data group '" + dataGroupName + "' found in model as '" + modelGroupName + "'. Renaming to match FAILED.")
+                            if fieldmodule.findFieldByName(modelGroupName).isValid():
+                                print("    Reason: field of that name already exists.")
+                        break
+                else:
+                    if writeDiagnostics:
+                        print("Load data: Data group '" + dataGroupName + "' not found in model")
+            # if there both nodes and datapoints, offset datapoint identifiers to ensure different
+            nodes = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_NODES)
+            if nodes.getSize() > 0:
+                datapoints = fieldmodule.findNodesetByFieldDomainType(Field.DOMAIN_TYPE_DATAPOINTS)
+                if datapoints.getSize() > 0:
+                    maximumDatapointIdentifier = max(0, getMaximumNodeIdentifier(datapoints))
+                    maximumNodeIdentifier = max(0, getMaximumNodeIdentifier(nodes))
+                    # this assumes identifiers are in low ranges and can be improved if there is a problem:
+                    identifierOffset = 100000
+                    while (maximumDatapointIdentifier > identifierOffset) or (maximumNodeIdentifier > identifierOffset):
+                        assert identifierOffset < 1000000000, "Invalid node and datapoint identifier ranges"
+                        identifierOffset *= 10
                     while True:
                         # logic relies on datapoints being in identifier order
                         datapoint = datapoints.createNodeiterator().next()
@@ -131,18 +157,18 @@ class Fitter:
                             break;
                         result = datapoint.setIdentifier(identifier + identifierOffset)
                         assert result == RESULT_OK, "Failed to offset datapoint identifier"
-            # transfer nodes as datapoints to self._region
-            sir = self._rawDataRegion.createStreaminformationRegion()
-            srm = sir.createStreamresourceMemory()
-            sir.setResourceDomainTypes(srm, Field.DOMAIN_TYPE_NODES)
-            self._rawDataRegion.write(sir)
-            result, buffer = srm.getBuffer()
-            assert result == RESULT_OK, "Failed to write nodes"
-            buffer = buffer.replace(bytes("!#nodeset nodes", "utf-8"), bytes("!#nodeset datapoints", "utf-8"))
-            sir = self._region.createStreaminformationRegion()
-            srm = sir.createStreamresourceMemoryBuffer(buffer)
-            result = self._region.read(sir)
-            assert result == RESULT_OK, "Failed to load nodes as datapoints"
+                # transfer nodes as datapoints to self._region
+                sir = self._rawDataRegion.createStreaminformationRegion()
+                srm = sir.createStreamresourceMemory()
+                sir.setResourceDomainTypes(srm, Field.DOMAIN_TYPE_NODES)
+                self._rawDataRegion.write(sir)
+                result, buffer = srm.getBuffer()
+                assert result == RESULT_OK, "Failed to write nodes"
+                buffer = buffer.replace(bytes("!#nodeset nodes", "utf-8"), bytes("!#nodeset datapoints", "utf-8"))
+                sir = self._region.createStreaminformationRegion()
+                srm = sir.createStreamresourceMemoryBuffer(buffer)
+                result = self._region.read(sir)
+                assert result == RESULT_OK, "Failed to load nodes as datapoints"
         # transfer datapoints to self._region
         sir = self._rawDataRegion.createStreaminformationRegion()
         srm = sir.createStreamresourceMemory()
@@ -319,8 +345,8 @@ class Fitter:
                 fieldcache.setNode(datapoint)
                 name = self._markerDataNameField.evaluateString(fieldcache)
                 # if this is the only datapoint with name:
-                if name and findNodeWithName(self._markerDataGroup, self._markerDataNameField, name):
-                    node = findNodeWithName(self._markerNodeGroup, self._markerNameField, name)
+                if name and findNodeWithName(self._markerDataGroup, self._markerDataNameField, name, ignore_case=True, strip_whitespace=True):
+                    node = findNodeWithName(self._markerNodeGroup, self._markerNameField, name, ignore_case=True, strip_whitespace=True)
                     if node:
                         fieldcache.setNode(node)
                         element, xi = self._markerLocationField.evaluateMeshLocation(fieldcache, meshDimension)
@@ -539,7 +565,7 @@ class Fitter:
                     unprojectedDatapoints.removeNodesConditional(self._dataProjectionNodeGroupFields[d])
                 unprojectedCount = unprojectedDatapoints.getSize()
                 if unprojectedCount > 0:
-                    print("Warning: " + str(unprojected) + " data points with data coordinates have not been projected")
+                    print("Warning: " + str(unprojectedCount) + " data points with data coordinates have not been projected")
                 del unprojectedDatapoints
 
             # remove temporary objects before ChangeManager exits
